@@ -1,0 +1,19 @@
+{
+  "name": "fingerboard-3d",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Interactive 3D fingerboard viewer with a live skin customiser.",
+  "scripts": {
+    "dev": "vite",
+    "dev:lan": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "three": "^0.186.0"
+  }
+}

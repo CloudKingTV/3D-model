@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
+    <meta name="theme-color" content="#0b0d11" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="description"
+      content="An interactive 3D fingerboard you can spin, inspect and re-skin — deck graphics, grip, trucks and wheels."
+    />
+    <title>Fingerboard Studio</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0d11'/%3E%3Cpath d='M5 19c0-1 1-2 2.5-2h17c1.5 0 2.5 1 2.5 2s-1 2-2.5 2h-17C6 21 5 20 5 19z' fill='%23ff5722'/%3E%3Ccircle cx='10' cy='24' r='2.2' fill='%23e6e8ec'/%3E%3Ccircle cx='22' cy='24' r='2.2' fill='%23e6e8ec'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="viewport" aria-label="3D fingerboard viewer"></canvas>
+
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand__mark" aria-hidden="true"></span>
+          <span class="brand__text">
+            <strong>Fingerboard</strong>
+            <em>Studio</em>
+          </span>
+        </div>
+
+        <nav class="views" id="views" aria-label="Camera views"></nav>
+
+        <div class="tools" id="tools"></div>
+      </header>
+
+      <div class="hint" id="hint">Drag to spin · pinch to zoom</div>
+
+      <aside class="panel" id="panel" aria-label="Board customiser">
+        <button class="panel__grab" id="panel-grab" aria-expanded="false">
+          <span class="panel__grabline" aria-hidden="true"></span>
+          <span class="panel__grabtext">Customise</span>
+        </button>
+        <nav class="tabs" id="tabs" role="tablist"></nav>
+        <div class="panel__body" id="panel-body"></div>
+      </aside>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <noscript>
+      <p style="color:#fff;font:16px/1.5 system-ui;padding:2rem">
+        This 3D fingerboard viewer needs JavaScript and WebGL.
+      </p>
+    </noscript>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
