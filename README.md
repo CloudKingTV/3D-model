@@ -28,12 +28,7 @@ download: the deck, trucks, wheels and every graphic are generated in code.
 
 ## Trying it on your phone
 
-**Published site.** Every push to the default branch deploys to GitHub Pages via
-`.github/workflows/deploy.yml`. Open the repo's **Settings → Pages** once and set
-**Source** to **GitHub Actions**; after that the site lives at
-`https://<your-username>.github.io/<repo>/` — open that on your phone.
-
-**Straight off your laptop, same Wi-Fi.** No deploy needed:
+### Right now, no setup — over your Wi-Fi
 
 ```bash
 npm install
@@ -41,7 +36,26 @@ npm run dev:lan
 ```
 
 Vite prints a **Network:** address such as `http://192.168.1.24:5173/`. Type that
-into your phone's browser. `npm run preview` does the same for a production build.
+into your phone's browser while it is on the same network. `npm run preview`
+serves a production build the same way. This needs nothing configured on GitHub.
+
+### A permanent link — GitHub Pages
+
+`.github/workflows/deploy.yml` builds and publishes the site on every push, but
+it needs two one-time clicks that only a repo owner can do — the Actions token
+is not permitted to make them:
+
+1. **Settings → Pages → Source: GitHub Actions.** Until this is set, the deploy
+   job fails with *"Get Pages site failed."*
+2. **Get this branch onto the default branch.** GitHub only allows Pages
+   deployments from the default branch by default, and this repo's default is
+   currently `claude/marketing-posts-x-6hfk7p`. Either merge
+   `claude/fingerboard-3d-viewer-s77665` into the default branch, make it the
+   default (Settings → Branches), or add it under
+   Settings → Environments → `github-pages` → Deployment branches.
+
+Then re-run the workflow from the Actions tab. The site lands at
+`https://cloudkingtv.github.io/3D-model/`.
 
 ## Running it locally
 
