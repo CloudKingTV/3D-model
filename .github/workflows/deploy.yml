@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/fingerboard-3d-viewer-s77665]
+    branches: [main, master, claude/fingerboard-3d-viewer-s77665]
   workflow_dispatch:
 
 permissions:
@@ -19,9 +19,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -33,7 +33,11 @@ jobs:
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
 
+      # Turns Pages on for the repo the first time this runs, so there is no
+      # manual setup step before the site appears.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
