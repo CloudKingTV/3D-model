@@ -2,7 +2,8 @@ import {
   el, group, segmented, tiles, swatches, slider, toggle, action, ICONS, PALETTE,
 } from './controls.js';
 import { DECK_SKINS, BACKGROUNDS, preloadImage } from '../lib/textures.js';
-import { PRESETS } from '../lib/state.js';
+import { PRESETS, SHAPE_PRESETS } from '../lib/state.js';
+import { resolveShape, deckHalfWidth } from '../lib/geometry.js';
 import { TRUCK_FINISH_LIST } from '../lib/fingerboard.js';
 
 const GRIP_PATTERNS = [
@@ -32,7 +33,7 @@ export function createPanel({ store, viewer, toast }) {
   const syncers = [];
 
   const cfg = () => store.config;
-  const set = (patch) => store.patch(patch);
+  const set = (patch, options) => store.patch(patch, options);
 
   /** Register a control that knows how to refresh itself. */
   const track = (node) => {
@@ -220,6 +221,84 @@ export function createPanel({ store, viewer, toast }) {
     ]);
   }
 
+  /* ------------------------------------------------------------- tab: shape */
+
+  /**
+   * The deck's outline seen from above, as an inline SVG. All the presets share
+   * one viewBox, so a longer or wider deck actually reads as longer or wider.
+   */
+  function shapeSilhouette(shape) {
+    const spec = resolveShape(shape);
+    const steps = 44;
+    const edge = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const x = -spec.halfLength + (i / steps) * spec.length;
+      edge.push([x, deckHalfWidth(x, spec)]);
+    }
+    const path = [
+      `M ${edge.map(([x, w]) => `${x.toFixed(2)},${(-w).toFixed(2)}`).join(' L ')}`,
+      `L ${[...edge].reverse().map(([x, w]) => `${x.toFixed(2)},${w.toFixed(2)}`).join(' L ')} Z`,
+    ].join(' ');
+    return `<svg viewBox="-5.9 -2.1 11.8 4.2" preserveAspectRatio="xMidYMid meet" aria-hidden="true">`
+      + `<path d="${path}" fill="currentColor" /></svg>`;
+  }
+
+  /** A slider over one shape dimension, labelled in millimetres. */
+  function dimension(label, key, min, max, step, format) {
+    const control = track(slider({
+      min, max, step,
+      getValue: () => cfg().shape[key],
+      onInput: (value) => set({ shape: { [key]: value } }, { draft: true }),
+      onCommit: (value) => set({ shape: { [key]: value } }),
+      format,
+    }));
+    return group(label, control, control.__readout);
+  }
+
+  const mm = (value) => `${Math.round(value * 10)}mm`;
+
+  function shapeTab() {
+    const sizeTiles = track(tiles(
+      SHAPE_PRESETS.map((preset) => ({
+        id: preset.id,
+        name: preset.name,
+        chipHtml: shapeSilhouette(preset.shape),
+      })),
+      () => matchedShape(),
+      (id) => {
+        const preset = SHAPE_PRESETS.find((entry) => entry.id === id);
+        if (preset) {
+          set({ shape: preset.shape });
+          toast(`${preset.name} — ${preset.note}`);
+        }
+      },
+    ));
+
+    return el('div', {}, [
+      group('Stock sizes', sizeTiles),
+      dimension('Deck length', 'length', 8.6, 11.0, 0.1, mm),
+      dimension('Deck width', 'width', 2.6, 3.8, 0.05, mm),
+      dimension('Concave', 'concave', 0, 0.22, 0.01, (v) => `${(v * 10).toFixed(1)}mm`),
+      dimension('Kick height', 'kickHeight', 0.3, 1.15, 0.02, mm),
+      dimension('Kick length', 'kickStart', 0.5, 0.78, 0.01, (v) => `${Math.round((1 - v) * 100)}%`),
+      dimension('Wheelbase', 'wheelbase', 2.0, 3.4, 0.05, mm),
+      dimension('Wheel size', 'wheelRadius', 0.3, 0.52, 0.01, (v) => `${(v * 20).toFixed(1)}mm`),
+      dimension('Ride height', 'axleDrop', 0.48, 0.92, 0.02, mm),
+      el('p', { class: 'note', text: 'The deck is rebuilt from these numbers, so the graphic, grip and hardware all follow the new shape.' }),
+    ]);
+  }
+
+  /** The stock size the current dimensions still match, if any. */
+  function matchedShape() {
+    const current = cfg().shape;
+    for (const preset of SHAPE_PRESETS) {
+      if (Object.entries(preset.shape).every(([key, value]) => current[key] === value)) {
+        return preset.id;
+      }
+    }
+    return null;
+  }
+
   /* ------------------------------------------------------------- tab: scene */
 
   function sceneTab() {
@@ -260,6 +339,7 @@ export function createPanel({ store, viewer, toast }) {
 
   const TABS = [
     { id: 'looks', name: 'Looks', build: looksTab },
+    { id: 'shape', name: 'Shape', build: shapeTab },
     { id: 'deck', name: 'Deck', build: deckTab },
     { id: 'grip', name: 'Grip', build: gripTab },
     { id: 'trucks', name: 'Trucks', build: trucksTab },

@@ -16,6 +16,10 @@ download: the deck, trucks, wheels and every graphic are generated in code.
 - **Spin it.** Drag to orbit, scroll or pinch to zoom, two fingers to pan. Five
   framed camera stops (Hero, Top, Graphic, Side, Nose) that re-fit themselves to
   whatever size window you are in.
+- **Reshape it.** Deck length, width, concave, kick height and length, wheelbase,
+  wheel size and ride height are all live sliders labelled in millimetres, plus
+  five stock sizes. The deck is rebuilt from those numbers, so the graphic, grip
+  and hardware follow the new shape.
 - **Re-skin it.** Eight deck graphics, each driven by three colours you pick;
   grip tape colour and pattern; truck finish, tint and bushings; wheel style and
   urethane colour; hardware; veneer; lacquer gloss. Or upload your own image and
@@ -94,10 +98,15 @@ src/ui/panel.js      the customiser tabs
 
 Two details worth knowing if you want to extend it:
 
-- **Deck geometry** is a parametric surface. `deckKick(x)` gives the centre-line
-  height and `deckHalfWidth(x)` the outline; the solid is that surface plus a
-  copy offset along its own normal, so the deck keeps a constant thickness
-  through the kicks. Change `DECK_SPEC` in `src/lib/geometry.js` to reshape it.
+- **Deck geometry** is a parametric surface. `deckKick(x, spec)` gives the
+  centre-line height and `deckHalfWidth(x, spec)` the outline; the solid is that
+  surface plus a copy offset along its own normal, so the deck keeps a constant
+  thickness through the kicks. `resolveShape()` turns the handful of numbers the
+  Shape tab edits into the full spec every builder reads, including the derived
+  ones (where the nose arc starts, how far the axles reach, ride height).
+- **Reshaping rebuilds the meshes but not the materials**, so skins survive it.
+  A slider drag rebuilds at reduced tessellation, at most once per frame, and
+  restores full detail when the handle is released.
 - **Adding a skin** means adding one `draw(ctx, w, h, palette)` function to
   `DECK_SKINS` in `src/lib/textures.js`. It receives a canvas sized to the deck's
   aspect ratio and the user's three colours; everything else is automatic.

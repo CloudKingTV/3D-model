@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createFingerboard, GROUND_Y, BOARD_BOUNDS } from './fingerboard.js';
+import { createFingerboard } from './fingerboard.js';
 import { BACKGROUNDS, createBackgroundTexture, createFloorAlpha } from './textures.js';
 
 /**
@@ -99,7 +99,6 @@ export function createViewer(canvas) {
   });
   const floor = new THREE.Mesh(new THREE.CircleGeometry(15, 64), floorMaterial);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = GROUND_Y - 0.001;
   floor.receiveShadow = true;
   scene.add(floor);
 
@@ -123,8 +122,12 @@ export function createViewer(canvas) {
     controls.autoRotateSpeed = sceneConfig.rotateSpeed * 2.2;
   }
 
-  function update(config, sections) {
-    board.update(config, sections);
+  function update(config, sections, meta) {
+    board.update(config, sections, meta);
+    if (!sections || sections.has('shape')) {
+      refreshBounds();
+      if (currentView) setView(currentView, { animate: false });
+    }
     if (!sections || sections.has('scene')) applyScene(config.scene);
   }
 
@@ -134,13 +137,19 @@ export function createViewer(canvas) {
   const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
   // The eight corners of the board, checked against the frustum when framing.
+  // Rebuilt whenever the shape changes, so a longer deck reframes itself.
   const CORNERS = [];
-  for (const x of [BOARD_BOUNDS.min.x, BOARD_BOUNDS.max.x]) {
-    for (const y of [BOARD_BOUNDS.min.y, BOARD_BOUNDS.max.y]) {
-      for (const z of [BOARD_BOUNDS.min.z, BOARD_BOUNDS.max.z]) {
-        CORNERS.push(new THREE.Vector3(x, y, z));
+
+  function refreshBounds() {
+    const { min, max } = board.bounds;
+    CORNERS.length = 0;
+    for (const x of [min.x, max.x]) {
+      for (const y of [min.y, max.y]) {
+        for (const z of [min.z, max.z]) CORNERS.push(new THREE.Vector3(x, y, z));
       }
     }
+    controls.target.set(0, (min.y + max.y) / 2, 0);
+    floor.position.y = board.groundY - 0.001;
   }
 
   // Half-extents of the area the board should sit in, as a fraction of the
@@ -281,6 +290,7 @@ export function createViewer(canvas) {
     renderer.dispose();
   }
 
+  refreshBounds(); // CORNERS must exist before the first framing solve
   resize();
   setView('hero', { animate: false });
   loop();

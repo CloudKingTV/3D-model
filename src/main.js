@@ -270,8 +270,8 @@ function luminanceOf(hex) {
 
 const ui = createPanel({ store, viewer, toast });
 
-store.subscribe((config, sections) => {
-  viewer.update(config, sections);
+store.subscribe((config, sections, meta) => {
+  viewer.update(config, sections, meta);
   applyTheme(config);
   ui.sync();
 });

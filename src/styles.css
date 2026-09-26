@@ -245,22 +245,19 @@ button {
 }
 
 .tabs {
-  display: flex;
+  /* A grid rather than a scrolling strip: more tabs than fit on one row wrap
+     to the next at the same width, instead of the last one being clipped. */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 2px;
   padding: 8px;
   border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-  scrollbar-width: none;
   flex-shrink: 0;
 }
 
-.tabs::-webkit-scrollbar {
-  display: none;
-}
-
 .tabs button {
-  flex: 1;
-  padding: 9px 10px;
+  min-width: 0;
+  padding: 9px 6px;
   border-radius: var(--radius-sm);
   font-size: 12.5px;
   font-weight: 500;
@@ -388,6 +385,18 @@ button {
 
 .tile__chip span {
   flex: 1;
+}
+
+/* A shape preset previews its outline rather than a colour. */
+.tile__chip svg {
+  width: 100%;
+  height: 100%;
+  padding: 3px 5px;
+  color: var(--muted);
+}
+
+.tile[aria-pressed='true'] .tile__chip svg {
+  color: var(--accent);
 }
 
 .tile__name {

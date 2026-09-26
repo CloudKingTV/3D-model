@@ -7,6 +7,18 @@
  */
 
 export const DEFAULT_CONFIG = {
+  // Physical dimensions, in the same units as the model: 1 = 10mm, so a
+  // width of 3.0 is a 30mm deck.
+  shape: {
+    length: 9.6,
+    width: 3.0,
+    concave: 0.1,
+    kickHeight: 0.74,
+    kickStart: 0.62,
+    wheelbase: 2.6,
+    wheelRadius: 0.4,
+    axleDrop: 0.66,
+  },
   deck: {
     skin: 'flame',
     base: '#16181d',
@@ -144,6 +156,40 @@ export const PRESETS = [
   },
 ];
 
+/** Stock sizes, the way a fingerboard shop would list them. */
+export const SHAPE_PRESETS = [
+  {
+    id: 'street',
+    name: 'Street',
+    note: '96 × 30mm',
+    shape: { length: 9.6, width: 3.0, concave: 0.1, kickHeight: 0.74, kickStart: 0.62, wheelbase: 2.6 },
+  },
+  {
+    id: 'wide',
+    name: 'Wide',
+    note: '98 × 34mm',
+    shape: { length: 9.8, width: 3.4, concave: 0.13, kickHeight: 0.78, kickStart: 0.6, wheelbase: 2.7 },
+  },
+  {
+    id: 'mini',
+    name: 'Mini',
+    note: '91 × 28mm',
+    shape: { length: 9.1, width: 2.8, concave: 0.09, kickHeight: 0.7, kickStart: 0.62, wheelbase: 2.4 },
+  },
+  {
+    id: 'cruiser',
+    name: 'Cruiser',
+    note: '104 × 33mm',
+    shape: { length: 10.4, width: 3.3, concave: 0.06, kickHeight: 0.52, kickStart: 0.7, wheelbase: 3.0 },
+  },
+  {
+    id: 'popsicle',
+    name: 'Pop',
+    note: '100 × 31mm',
+    shape: { length: 10.0, width: 3.1, concave: 0.14, kickHeight: 0.88, kickStart: 0.58, wheelbase: 2.8 },
+  },
+];
+
 const STORAGE_KEY = 'fingerboard-3d:config:v1';
 
 function isPlainObject(value) {
@@ -178,8 +224,8 @@ export function createStore() {
   const config = merge(clone(DEFAULT_CONFIG), loadSaved() ?? {});
   const listeners = new Set();
 
-  function notify(sections) {
-    for (const listener of listeners) listener(config, sections);
+  function notify(sections, meta) {
+    for (const listener of listeners) listener(config, sections, meta);
   }
 
   return {
@@ -190,17 +236,21 @@ export function createStore() {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    /** Apply a patch such as `{ deck: { ink: '#fff' } }`. */
+    /**
+     * Apply a patch such as `{ deck: { ink: '#fff' } }`.
+     * `draft: true` marks a value still being dragged, which lets expensive
+     * listeners (the geometry rebuild) do cheaper work until it settles.
+     */
     patch(part, options = {}) {
       merge(config, part);
       if (options.persist !== false) save(config);
-      notify(new Set(Object.keys(part)));
+      notify(new Set(Object.keys(part)), { draft: options.draft === true });
     },
     /** Replace everything (presets, share links, reset). */
     replace(next, options = {}) {
       merge(config, merge(clone(DEFAULT_CONFIG), next));
       if (options.persist !== false) save(config);
-      notify(new Set(Object.keys(DEFAULT_CONFIG)));
+      notify(new Set(Object.keys(DEFAULT_CONFIG)), { draft: false });
     },
     reset() {
       this.replace(clone(DEFAULT_CONFIG));

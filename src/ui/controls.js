@@ -128,14 +128,16 @@ export function swatches(getValue, onPick, palette = PALETTE) {
   return wrap;
 }
 
-export function slider({ min, max, step, getValue, onInput, format }) {
+export function slider({ min, max, step, getValue, onInput, onCommit, format }) {
   const readout = el('span', { class: 'group__value' });
   const input = el('input', {
     type: 'range',
     min: String(min),
     max: String(max),
     step: String(step),
+    // `input` fires throughout a drag, `change` once the handle is released.
     oninput: (event) => onInput(Number(event.target.value)),
+    onchange: (event) => (onCommit ?? onInput)(Number(event.target.value)),
   });
   const sync = () => {
     input.value = String(getValue());
