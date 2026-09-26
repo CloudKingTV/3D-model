@@ -61,12 +61,21 @@ Then re-run the workflow from the Actions tab. The site lands at
 
 ```bash
 npm install
-npm run dev        # dev server at http://localhost:5173
-npm run build      # production build into dist/
-npm run preview    # serve the built site
+npm run dev             # dev server at http://localhost:5173
+npm run build           # production build into dist/
+npm run preview         # serve the built site
+npm run build:artifact  # repackage the build as a Claude Artifact page
 ```
 
 Requires Node 20+. The only runtime dependency is [three.js](https://threejs.org).
+
+`build:artifact` writes `dist/artifact.html` — the same app with the document
+skeleton stripped, for hosts that supply their own. Publish it together with the
+two files in `dist/assets/` that it names.
+
+The app adapts to being embedded in a frame: breakpoints follow its own width
+rather than the viewport's, and the Share button hides itself, because a
+cross-origin frame does not pass the URL hash its links depend on.
 
 ## How it is put together
 

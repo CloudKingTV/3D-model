@@ -216,9 +216,10 @@ export function createViewer(canvas) {
    * sub-window of it, which recentres the board in the space that is actually
    * visible instead of behind the panel.
    */
-  function occlusion(width) {
+  function occlusion() {
     const styles = getComputedStyle(document.documentElement);
-    if (width >= 880) {
+    // Same breakpoint attribute the stylesheet uses, so the two never disagree.
+    if (document.documentElement.dataset.layout === 'wide') {
       const panelWidth = parseFloat(styles.getPropertyValue('--panel-w')) || 348;
       return { x: panelWidth + 32, y: 0 };
     }
@@ -231,7 +232,7 @@ export function createViewer(canvas) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height, false);
 
-    const hidden = occlusion(width);
+    const hidden = occlusion();
     const offsetX = Math.min(hidden.x, width * 0.42);
     const offsetY = Math.min(hidden.y, height * 0.32);
     const fullWidth = width + offsetX;

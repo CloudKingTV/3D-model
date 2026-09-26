@@ -8,7 +8,8 @@
     "dev": "vite",
     "dev:lan": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "build:artifact": "VITE_BASE=./ vite build && node scripts/build-artifact.mjs"
   },
   "devDependencies": {
     "vite": "^8.3.0"

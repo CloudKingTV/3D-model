@@ -5,7 +5,40 @@ import { el, ICONS } from './ui/controls.js';
 import { BACKGROUNDS, rgba } from './lib/textures.js';
 
 const canvas = document.getElementById('viewport');
+const appRoot = document.getElementById('app');
 const store = createStore();
+
+/**
+ * Breakpoints keyed to the app's own width rather than the viewport's, so the
+ * layout is right when the page is embedded in a frame narrower than the
+ * screen. The CSS reads these attributes; so does the camera's panel offset.
+ */
+function syncLayout() {
+  // Some hosts lay a subframe out at a legacy 980px regardless of how wide it
+  // really is, so cap by the physical screen: a phone stays a phone.
+  const width = Math.min(
+    appRoot.clientWidth || window.innerWidth,
+    window.screen?.width || Number.POSITIVE_INFINITY,
+  );
+  const root = document.documentElement;
+  const layout = width >= 880 ? 'wide' : 'narrow';
+  const compact = width < 420 ? 'true' : 'false';
+  const changed = root.dataset.layout !== layout || root.dataset.compact !== compact;
+  root.dataset.layout = layout;
+  root.dataset.compact = compact;
+  return changed;
+}
+
+syncLayout(); // before the viewer builds, so its first framing is correct
+
+/** True inside a cross-origin frame, where downloads and URL state are blocked. */
+const EMBEDDED = (() => {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true; // reading window.top threw, so we are cross-origin framed
+  }
+})();
 
 let viewer;
 try {
@@ -91,35 +124,49 @@ const spinButton = tool('Toggle auto-spin', ICONS.spin, () => {
   store.patch({ scene: { autoRotate: !store.config.scene.autoRotate } });
 });
 
+// Showing the render in the page beats a download link: it is how you save a
+// picture on a phone anyway, and some embeds block downloads outright.
+const shot = document.getElementById('shot');
+const shotImage = document.getElementById('shot-image');
+
 tool('Save a picture', ICONS.camera, () => {
-  const url = viewer.snapshot();
-  const link = el('a', { href: url, download: `fingerboard-${Date.now()}.png` });
-  document.body.append(link);
-  link.click();
-  link.remove();
-  toast('Picture saved');
+  shotImage.src = viewer.snapshot();
+  shot.hidden = false;
 });
 
-tool('Share this board', ICONS.share, async () => {
-  const url = buildShareUrl(store.config);
-  try {
-    if (navigator.share) {
-      await navigator.share({ title: 'Fingerboard Studio', text: 'Check out this board', url });
-      return;
-    }
-    await navigator.clipboard.writeText(url);
-    toast('Link copied');
-  } catch (error) {
-    if (error?.name === 'AbortError') return; // user dismissed the share sheet
-    window.prompt('Copy this link', url);
-  }
+document.getElementById('shot-close').addEventListener('click', () => {
+  shot.hidden = true;
+  shotImage.removeAttribute('src');
 });
+
+shot.addEventListener('click', (event) => {
+  if (event.target === shot) document.getElementById('shot-close').click();
+});
+
+// A share link carries its state in the URL hash, which a cross-origin embed
+// does not pass through — so only offer it where it actually round-trips.
+if (!EMBEDDED) {
+  tool('Share this board', ICONS.share, async () => {
+    const url = buildShareUrl(store.config);
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Fingerboard Studio', text: 'Check out this board', url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast('Link copied');
+    } catch (error) {
+      if (error?.name === 'AbortError') return; // user dismissed the share sheet
+      window.prompt('Copy this link', url);
+    }
+  });
+}
 
 /* ------------------------------------------------------------ bottom sheet */
 
 const panel = document.getElementById('panel');
 const grab = document.getElementById('panel-grab');
-const isSheet = () => window.matchMedia('(max-width: 879px)').matches;
+const isSheet = () => document.documentElement.dataset.layout === 'narrow';
 
 function setSheetOpen(open) {
   panel.dataset.open = String(open);
@@ -197,6 +244,7 @@ setTimeout(dismissHint, 6500);
 
 /* ------------------------------------------------------------------ theme */
 
+// Absent when the page is embedded in a host that supplies its own <head>.
 const themeMeta = document.querySelector('meta[name="theme-color"]');
 
 function applyTheme(config) {
@@ -207,7 +255,7 @@ function applyTheme(config) {
   root.setProperty('--accent-ink', luminanceOf(config.deck.ink) > 0.58 ? '#12141a' : '#ffffff');
   document.querySelector('.brand__mark').style.background =
     `linear-gradient(140deg, ${config.deck.ink}, ${config.deck.accent})`;
-  themeMeta.setAttribute('content', BACKGROUNDS[config.scene.background]?.bottom ?? '#0b0d11');
+  themeMeta?.setAttribute('content', BACKGROUNDS[config.scene.background]?.bottom ?? '#0b0d11');
   spinButton.setAttribute('aria-pressed', String(config.scene.autoRotate));
 }
 
@@ -239,6 +287,12 @@ if (window.location.hash.startsWith('#b=')) {
   syncViewButtons();
   toast('Shared board loaded');
 }
+
+// A layout flip changes what the UI covers without necessarily resizing the
+// canvas, so the camera has to re-solve its framing.
+new ResizeObserver(() => {
+  if (syncLayout()) viewer.resize();
+}).observe(appRoot);
 
 window.addEventListener('beforeunload', () => viewer.dispose());
 
