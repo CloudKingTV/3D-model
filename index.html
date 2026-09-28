@@ -20,6 +20,7 @@
   </head>
   <body>
     <div id="app">
+      <div class="stage" id="stage-garage">
       <canvas id="viewport" aria-label="3D fingerboard viewer"></canvas>
 
       <header class="topbar">
@@ -48,6 +49,11 @@
       </aside>
 
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      </div>
+
+      <div class="stage" id="stage-game" hidden>
+        <canvas id="playfield" aria-label="Fingerboard game"></canvas>
+      </div>
 
       <div class="shot" id="shot" hidden>
         <img class="shot__image" id="shot-image" alt="Your fingerboard" />

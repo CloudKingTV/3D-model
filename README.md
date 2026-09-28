@@ -30,6 +30,29 @@ download: the deck, trucks, wheels and every graphic are generated in code.
 - **Share a build.** The Share button puts the whole configuration in the URL,
   so a link opens the exact same board on any other device.
 
+## The game
+
+**Skate it** in the top bar drops the board you just built into a park laid out
+on a desk. Ninety seconds, score as much as you can.
+
+- **Hold** to crouch, **release** to pop. Longer hold, bigger ollie.
+- **A / D** (or swipe left / right) kickflip and heelflip.
+- **S / W** (or swipe down / up) pop shuv and 360 shuv.
+- A flip and a shuv thrown together make a varial — they turn on separate axes,
+  so both land in one air.
+- Land on a rail or a ledge to grind it. Every clean landing raises the
+  multiplier; a bail resets it.
+
+The park is endless and generated from a seed: flats, kickers, quarter pipes
+with coping, funboxes, concrete ledges, flat bars and gaps, getting bolder the
+further you get.
+
+Scale is the point. The deck is 96mm, the table is 700mm deep, the mug beside
+the run is 85mm across and the pencil is 175mm long — real sizes, so the board
+reads as tiny against things you already know the size of. A tilt-shift pass
+keeps a narrow band in focus and blurs the rest, which is what a macro lens
+does to something this small, and it tracks the board around the frame.
+
 ## Trying it on your phone
 
 ### Right now, no setup — over your Wi-Fi
@@ -94,6 +117,13 @@ src/lib/viewer.js    renderer, lighting, orbit controls, camera framing
 src/lib/state.js     config store, presets, localStorage and share links
 src/ui/controls.js   small DOM builders (swatches, sliders, toggles, tiles)
 src/ui/panel.js      the customiser tabs
+src/ui/gameHud.js    score, timer, combo and the game overlays
+src/game/track.js    procedural park: features and surface queries (pure)
+src/game/skater.js   physics, trick state machine and scoring (pure)
+src/game/props.js    table, ramps, rails and the desk clutter
+src/game/scene.js    game scene, camera follow, feature recycling
+src/game/tiltshift.js the miniature-faking blur
+src/game/index.js    game loop, input and run lifecycle
 ```
 
 Two details worth knowing if you want to extend it:

@@ -264,9 +264,10 @@ export function createViewer(canvas) {
   window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 
   let running = true;
+  let frameHandle = 0;
   function loop() {
     if (!running) return;
-    requestAnimationFrame(loop);
+    frameHandle = requestAnimationFrame(loop);
     stepTween(performance.now());
     controls.update();
     renderer.render(scene, camera);
@@ -280,6 +281,7 @@ export function createViewer(canvas) {
 
   function dispose() {
     running = false;
+    cancelAnimationFrame(frameHandle);
     resizeObserver.disconnect();
     controls.dispose();
     board.dispose();
@@ -309,6 +311,17 @@ export function createViewer(canvas) {
     /** Stop re-framing on resize once the user has taken manual control. */
     releaseView() {
       currentView = null;
+    },
+    /** Stop rendering while something else owns the screen. */
+    pause() {
+      running = false;
+      cancelAnimationFrame(frameHandle);
+    },
+    resume() {
+      if (running) return;
+      running = true;
+      resize();
+      loop();
     },
   };
 }

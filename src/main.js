@@ -1,4 +1,6 @@
 import { createStore, buildShareUrl } from './lib/state.js';
+import { createGame } from './game/index.js';
+import { createGameHud } from './ui/gameHud.js';
 import { createViewer } from './lib/viewer.js';
 import { createPanel } from './ui/panel.js';
 import { el, ICONS } from './ui/controls.js';
@@ -120,6 +122,8 @@ function tool(label, iconHtml, onClick) {
   return button;
 }
 
+tool('Skate it', ICONS.play, () => enterGame());
+
 const spinButton = tool('Toggle auto-spin', ICONS.spin, () => {
   store.patch({ scene: { autoRotate: !store.config.scene.autoRotate } });
 });
@@ -161,6 +165,54 @@ if (!EMBEDDED) {
     }
   });
 }
+
+/* -------------------------------------------------------------- game mode */
+
+const garageStage = document.getElementById('stage-garage');
+const gameStage = document.getElementById('stage-game');
+const playfield = document.getElementById('playfield');
+
+let game = null;
+let gameHud = null;
+
+function sizeGame() {
+  if (!game) return;
+  game.resize(gameStage.clientWidth || window.innerWidth, gameStage.clientHeight || window.innerHeight);
+}
+
+function enterGame() {
+  if (game) return;
+  garageStage.hidden = true;
+  gameStage.hidden = false;
+  viewer.pause(); // one renderer drawing at a time
+
+  gameHud = createGameHud(gameStage, {
+    onExit: exitGame,
+    onRestart: () => game?.restart(),
+  });
+  game = createGame(playfield, {
+    config: store.config,
+    hud: gameHud,
+    // Phones get lighter shadows and no MSAA; the tilt-shift stays either way.
+    quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'high',
+  });
+  sizeGame();
+}
+
+function exitGame() {
+  if (!game) return;
+  game.dispose();
+  gameHud.dispose();
+  game = null;
+  gameHud = null;
+  gameStage.innerHTML = '';
+  gameStage.append(playfield);
+  gameStage.hidden = true;
+  garageStage.hidden = false;
+  viewer.resume();
+}
+
+new ResizeObserver(sizeGame).observe(gameStage);
 
 /* ------------------------------------------------------------ bottom sheet */
 
@@ -272,6 +324,7 @@ const ui = createPanel({ store, viewer, toast });
 
 store.subscribe((config, sections, meta) => {
   viewer.update(config, sections, meta);
+  game?.applyConfig(config);
   applyTheme(config);
   ui.sync();
 });
@@ -294,7 +347,10 @@ new ResizeObserver(() => {
   if (syncLayout()) viewer.resize();
 }).observe(appRoot);
 
-window.addEventListener('beforeunload', () => viewer.dispose());
+window.addEventListener('beforeunload', () => {
+  game?.dispose();
+  viewer.dispose();
+});
 
 /* ------------------------------------------------------------------ fatal */
 

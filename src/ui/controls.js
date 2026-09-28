@@ -25,6 +25,7 @@ export const ICONS = {
   reset: icon('<path d="M4 9a8 8 0 1 1-.6 5"/><path d="M3.2 4.5V9h4.5"/>'),
   upload: icon('<path d="M12 16V5"/><path d="M8 8.5 12 4.5l4 4"/><path d="M5 14v5.5h14V14"/>'),
   pencil: icon('<path d="M4 20h4L20 8l-4-4L4 16z"/>'),
+  play: icon('<path d="M7 4.8 19 12 7 19.2z"/>'),
 };
 
 export function group(label, content, valueNode = null) {
