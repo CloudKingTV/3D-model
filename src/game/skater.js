@@ -54,8 +54,10 @@ export function nameTricks(ids) {
   return ids.map((id) => TRICKS[id].name).join(' + ');
 }
 
-export function createSkater() {
+export function createSkater({ wheelbase = 2.6 } = {}) {
   return {
+    /** Half the distance between the contact points, i.e. the wheelbase. */
+    halfBase: wheelbase,
     x: 0,
     y: 0,
     vx: PHYSICS.cruiseSpeed,
@@ -109,7 +111,7 @@ export function stepSkater(s, dt, track, input = {}) {
     if (s.bailTimer <= 0) {
       // Never drop back in over a gap, or the bail repeats until you drift out.
       s.x = track.solidGroundAhead(s.x);
-      const surface = track.supportAt(s.x, 99) ?? { y: 0, slope: 0 };
+      const surface = track.boardSupport(s.x, 99, s.halfBase) ?? { y: 0, slope: 0 };
       Object.assign(s, {
         state: 'rolling',
         y: surface.y,
@@ -156,31 +158,38 @@ export function stepSkater(s, dt, track, input = {}) {
 
   /* ---------------------------------------------------------- movement */
 
-  const surface = track.supportAt(s.x, s.y);
+  const halfBase = s.halfBase;
+  const prevX = s.x;
+  const prevY = s.y;
 
   if (s.state === 'grind') {
-    const stillOn = surface && surface.grindable && surface.feature === s.grindSurface.feature;
+    const support = track.boardSupport(s.x, s.y, halfBase, 0.7);
+    const stillOn = support?.surface.grindable
+      && support.surface.feature === s.grindSurface.feature;
     if (!stillOn) {
       s.state = 'air';
       s.vy = 0;
+      s.airTime = 0;
       events.push({ type: 'grindEnd' });
     } else {
-      s.y = surface.y;
+      s.y = support.y;
+      s.pitch = Math.atan(support.slope);
       s.score += PHYSICS.grindPointsPerSecond * s.multiplier * dt;
       events.push({ type: 'grinding', dt });
     }
   }
 
   if (s.state === 'rolling') {
-    if (!surface) {
-      s.state = 'air'; // rolled off the end of something
+    const support = track.boardSupport(s.x, s.y, halfBase);
+    if (!support) {
+      s.state = 'air';
       s.vy = 0;
+      s.airTime = 0;
     } else {
-      s.y = surface.y;
-      s.pitch = Math.atan(surface.slope);
+      s.y = support.y;
+      s.pitch = Math.atan(support.slope);
       // Gravity along the slope: ramps cost speed, landings give it back.
-      const along = -Math.sin(s.pitch) * PHYSICS.gravity * 0.45;
-      s.vx += along * dt;
+      s.vx += -Math.sin(s.pitch) * PHYSICS.gravity * 0.45 * dt;
       s.vx += (PHYSICS.cruiseSpeed - s.vx) * Math.min(1, dt * 0.7);
     }
   }
@@ -200,8 +209,8 @@ export function stepSkater(s, dt, track, input = {}) {
   /* --------------------------------------------------- leaving a surface */
 
   if (s.state === 'rolling') {
-    const ahead = track.supportAt(s.x, s.y);
-    if (!ahead || ahead.y < s.y - 0.35) {
+    const ahead = track.boardSupport(s.x, s.y, halfBase);
+    if (!ahead || ahead.y < s.y - 0.6) {
       // The ground fell away — launch along the lip we just left.
       s.state = 'air';
       s.vy = Math.min(PHYSICS.maxLaunch, s.vx * Math.tan(s.pitch));
@@ -215,21 +224,38 @@ export function stepSkater(s, dt, track, input = {}) {
   /* --------------------------------------------------- landing and bails */
 
   if (s.state === 'air') {
-    const feature = track.featureAt(s.x);
-
-    // Running into the face of a square-edged ledge.
-    if (feature?.kind === 'ledge' && s.y < feature.height - 0.4 && s.vy <= 0) {
-      bail(s, events, 'Clipped the ledge');
-      return events;
-    }
     if (s.y < -14) {
       bail(s, events, 'Fell in the gap');
       return events;
     }
 
-    const below = track.supportAt(s.x, s.y, 0.9);
-    if (below && s.vy <= 0 && s.y <= below.y + 0.25) {
-      land(s, below, events);
+    // Sweep the path travelled this step instead of only testing where we
+    // ended up. At full pop the board covers more than a unit per step, which
+    // is enough to jump clean over a rail or a ledge top and miss it.
+    const span = Math.hypot(s.x - prevX, s.y - prevY);
+    const steps = Math.min(12, Math.max(1, Math.ceil(span / 0.22)));
+
+    for (let i = 1; i <= steps; i += 1) {
+      const t = i / steps;
+      const x = prevX + (s.x - prevX) * t;
+      const y = prevY + (s.y - prevY) * t;
+
+      const blocker = track.blockedBy(x, y, halfBase);
+      if (blocker) {
+        s.x = x;
+        s.y = y;
+        bail(s, events, 'Clipped the ledge');
+        return events;
+      }
+
+      if (s.vy > 0) continue; // still rising: nothing to land on yet
+      const support = track.boardSupport(x, y, halfBase, 0.3);
+      if (support && y <= support.y + 0.14) {
+        s.x = x;
+        s.y = support.y;
+        land(s, support, events);
+        return events;
+      }
     }
   }
 
@@ -266,7 +292,8 @@ function pop(s, events) {
   events.push({ type: 'pop', power });
 }
 
-function land(s, surface, events) {
+function land(s, support, events) {
+  const surface = support.surface;
   const rollError = angleError(s.roll, TAU);
   const yawError = angleError(s.yaw, Math.PI);
 
@@ -275,14 +302,28 @@ function land(s, surface, events) {
     return;
   }
 
+  // Rolling over a ramp's crest re-seats the wheels constantly. Those are not
+  // landings: reattach silently rather than firing a trick pop-up for each one.
+  const trivial = s.tricksThisAir.length === 0
+    && !surface.grindable
+    && s.airTime < 0.09;
+  if (trivial) {
+    s.y = support.y;
+    s.vy = 0;
+    s.pitch = Math.atan(support.slope);
+    s.state = 'rolling';
+    s.airTime = 0;
+    return;
+  }
+
   // Snap the rotations to what was actually landed.
   s.roll = Math.round(s.roll / TAU) * TAU;
   s.yaw = Math.round(s.yaw / Math.PI) * Math.PI;
   s.rollTarget = s.roll;
   s.yawTarget = s.yaw;
-  s.y = surface.y;
+  s.y = support.y;
   s.vy = 0;
-  s.pitch = Math.atan(surface.slope);
+  s.pitch = Math.atan(support.slope);
 
   const trickPoints = s.tricksThisAir.reduce((sum, id) => sum + TRICKS[id].points, 0);
   const airBonus = Math.round(s.airTime * 90);
@@ -310,7 +351,15 @@ function land(s, surface, events) {
     s.state = 'rolling';
   }
 
-  events.push({ type: 'land', label, points: gained, multiplier: s.multiplier, airTime: s.airTime });
+  events.push({
+    type: 'land',
+    label,
+    points: gained,
+    multiplier: s.multiplier,
+    airTime: s.airTime,
+    tricks: s.tricksThisAir.length,
+    grind: grindStart,
+  });
   s.tricksThisAir = [];
   s.airTime = 0;
 }

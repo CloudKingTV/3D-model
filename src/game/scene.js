@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createFingerboard } from '../lib/fingerboard.js';
 import { createTiltShift } from './tiltshift.js';
+import { createEffects } from './effects.js';
 import {
   TABLE_DEPTH,
   createTableTexture,
@@ -43,7 +44,7 @@ function slotRandom(slot, salt) {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
-export function createGameScene(canvas, { quality = 'high' } = {}) {
+export function createGameScene(canvas, { quality = 'high', accent = '#ff5722' } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality === 'high' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality === 'high' ? 2 : 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -119,6 +120,14 @@ export function createGameScene(canvas, { quality = 'high' } = {}) {
   pitchGroup.add(yawGroup);
   scene.add(pitchGroup);
 
+  // Off the roll axis on purpose: a point on the board's centre line would not
+  // move during a kickflip, so the trail would draw nothing.
+  const noseMarker = new THREE.Object3D();
+  noseMarker.position.set(4.6, -0.2, 1.4);
+  board.object.add(noseMarker);
+
+  const effects = createEffects(scene, { accent });
+
   /* ------------------------------------------------- world bookkeeping */
 
   const featureGroups = new Map(); // feature.id -> THREE.Group
@@ -191,6 +200,7 @@ export function createGameScene(canvas, { quality = 'high' } = {}) {
 
   /* -------------------------------------------------------------- pose */
 
+  const trailPoint = new THREE.Vector3();
   const cameraTarget = new THREE.Vector3();
   const lookTarget = new THREE.Vector3();
   let smoothedY = 0;
@@ -210,6 +220,23 @@ export function createGameScene(canvas, { quality = 'high' } = {}) {
     const squat = skater.charge * 0.5;
     board.object.position.y -= squat * 0.35;
     board.object.rotation.z = -squat * 0.1;
+
+    // Metal on metal: a grind should buzz rather than glide perfectly.
+    if (skater.state === 'grind') {
+      pitchGroup.position.y += (Math.random() - 0.5) * 0.06;
+      rollGroup.rotation.x += (Math.random() - 0.5) * 0.03;
+    }
+
+    // The trail only means anything while the board is actually spinning.
+    const spinning = skater.state === 'air'
+      && (Math.abs(skater.rollTarget - skater.roll) > 0.05
+        || Math.abs(skater.yawTarget - skater.yaw) > 0.05);
+    effects.setTrailActive(spinning);
+    if (spinning) {
+      noseMarker.updateWorldMatrix(true, false);
+      noseMarker.getWorldPosition(trailPoint);
+      effects.pushTrail(trailPoint);
+    }
   }
 
   function updateCamera(skater, dt) {
@@ -219,12 +246,22 @@ export function createGameScene(canvas, { quality = 'high' } = {}) {
     smoothedY += (followY - smoothedY) * Math.min(1, dt * 3.2);
     // Roughly 25 degrees up: high enough to read as looking down at a table,
     // low enough that flips still read against the horizon.
+    // A landing worth celebrating pulls the camera in for a moment.
+    punch = Math.max(0, punch - dt * 2.2);
+    const pull = 1 - punch * 0.16;
+
     cameraTarget.set(
-      skater.x + 9 * framing.scale,
-      smoothedY + 23 * framing.scale,
-      50 * framing.scale,
+      skater.x + 9 * framing.scale * pull,
+      smoothedY + 23 * framing.scale * pull,
+      50 * framing.scale * pull,
     );
     camera.position.lerp(cameraTarget, Math.min(1, dt * 6));
+
+    const shake = effects.shake;
+    if (shake > 0.001) {
+      camera.position.x += (Math.random() - 0.5) * shake * 2.2;
+      camera.position.y += (Math.random() - 0.5) * shake * 2.2;
+    }
     // Aimed a little high so the desk clutter behind the run stays in frame —
     // a mug you can see all of is what makes the board look 96mm long.
     lookTarget.set(skater.x + 3, smoothedY + 3.6 * framing.scale, -2);
@@ -240,6 +277,7 @@ export function createGameScene(canvas, { quality = 'high' } = {}) {
   // Always on: the miniature illusion is the point, not a nicety.
   const post = createTiltShift(renderer, scene, camera);
   const projected = new THREE.Vector3();
+  let punch = 0;
 
   function resize(width, height) {
     renderer.setSize(width, height, false);
@@ -268,6 +306,7 @@ export function createGameScene(canvas, { quality = 'high' } = {}) {
   }
 
   function dispose() {
+    effects.dispose();
     for (const [, group] of featureGroups) disposeTree(group);
     for (const [, group] of propGroups) disposeTree(group);
     featureGroups.clear();
@@ -295,9 +334,27 @@ export function createGameScene(canvas, { quality = 'high' } = {}) {
     resize,
     render,
     dispose,
+    effects,
+
     /** Re-skin the board from the customiser's config. */
     applyConfig(config) {
       board.update(config, null);
+      effects.setAccent(config.deck.ink);
+    },
+
+    /** Where the board is on screen, 0..1, so pop-ups can appear next to it. */
+    projectBoard(skater) {
+      projected.set(skater.x, skater.y + 1.5, 0).project(camera);
+      return { x: projected.x * 0.5 + 0.5, y: 0.5 - projected.y * 0.5 };
+    },
+
+    /** Pull the camera in briefly; 0..1. */
+    punchIn(amount) {
+      punch = Math.min(1, punch + amount);
+    },
+
+    stepEffects(dt) {
+      effects.update(dt);
     },
   };
 }

@@ -193,6 +193,44 @@ export function createTrack({ seed = 7, runInLength = 58 } = {}) {
       }
       return null;
     },
+
+    /**
+     * Where a board of this wheelbase comes to rest, from both contact points
+     * rather than one sample at its centre. A 96mm deck is long enough against
+     * a 200mm ledge that treating it as a point lets the nose pass through.
+     *
+     * Returns the centre height, the pitch the two wheels impose, and the
+     * surface actually bearing the weight.
+     */
+    boardSupport(x, y, halfBase, tolerance = 0.6) {
+      const back = this.supportAt(x - halfBase, y, tolerance);
+      const front = this.supportAt(x + halfBase, y, tolerance);
+      if (!back && !front) return null;
+
+      if (!back || !front) {
+        const only = back ?? front;
+        return { y: only.y, slope: 0, surface: only, contacts: 1 };
+      }
+      return {
+        y: (back.y + front.y) / 2,
+        slope: (front.y - back.y) / (2 * halfBase),
+        surface: front.y >= back.y ? front : back,
+        contacts: 2,
+      };
+    },
+
+    /**
+     * The square-edged obstacle in the way at this height, if any — tested at
+     * both wheels and in both directions, so ollieing up into the side of a
+     * ledge is a crash instead of a pass-through.
+     */
+    blockedBy(x, y, halfBase, clearance = 0.4) {
+      for (const probe of [x - halfBase, x, x + halfBase]) {
+        const feature = this.featureAt(probe);
+        if (feature?.kind === 'ledge' && y < feature.height - clearance) return feature;
+      }
+      return null;
+    },
   };
 }
 

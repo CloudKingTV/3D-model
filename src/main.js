@@ -193,6 +193,7 @@ function enterGame() {
   game = createGame(playfield, {
     config: store.config,
     hud: gameHud,
+    comicHost: gameStage,
     // Phones get lighter shadows and no MSAA; the tilt-shift stays either way.
     quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'high',
   });

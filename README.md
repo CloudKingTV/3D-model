@@ -43,6 +43,12 @@ on a desk. Ninety seconds, score as much as you can.
 - Land on a rail or a ledge to grind it. Every clean landing raises the
   multiplier; a bail resets it.
 
+Landings are scored for what you did with them, and the noise matches: a comic
+starburst for an ordinary one, and for anything really good a full-panel
+flourish with radiating speed lines, a dip into slow motion and a camera lean.
+Flips draw a trail off the nose of the board, grinds throw sparks off the rail,
+and every landing kicks up an impact ring.
+
 The park is endless and generated from a seed: flats, kickers, quarter pipes
 with coping, funboxes, concrete ledges, flat bars and gaps, getting bolder the
 further you get.
@@ -92,6 +98,8 @@ npm run dev             # dev server at http://localhost:5173
 npm run build           # production build into dist/
 npm run preview         # serve the built site
 npm run build:artifact  # repackage the build as a Claude Artifact page
+npm test                # headless checks for the game's effects
+npm run sim             # simulate scripted runs and print the score spread
 ```
 
 Requires Node 20+. The only runtime dependency is [three.js](https://threejs.org).
@@ -123,11 +131,20 @@ src/game/skater.js   physics, trick state machine and scoring (pure)
 src/game/props.js    table, ramps, rails and the desk clutter
 src/game/scene.js    game scene, camera follow, feature recycling
 src/game/tiltshift.js the miniature-faking blur
+src/game/effects.js  sparks, flip trails, impact rings, screen shake
+src/game/comic.js    comic starbursts and the big-landing flourish
 src/game/index.js    game loop, input and run lifecycle
+test/effects.test.mjs  effects geometry and lifetimes, headless
+test/run.sim.mjs       simulated runs used to tune scoring
 ```
 
 Two details worth knowing if you want to extend it:
 
+- **Collision** uses both wheel contact points rather than one sample at the
+  board's centre, and sweeps the path travelled each step rather than testing
+  only where the board ended up. A 96mm deck against a 200mm ledge is long
+  enough that a single point lets the nose through, and at full pop the board
+  covers more than a unit per 120Hz step — enough to jump clean over a rail.
 - **Deck geometry** is a parametric surface. `deckKick(x, spec)` gives the
   centre-line height and `deckHalfWidth(x, spec)` the outline; the solid is that
   surface plus a copy offset along its own normal, so the deck keeps a constant

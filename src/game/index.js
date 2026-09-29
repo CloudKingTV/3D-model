@@ -1,6 +1,7 @@
 import { createTrack } from './track.js';
 import { createSkater, stepSkater, PHYSICS } from './skater.js';
 import { createGameScene } from './scene.js';
+import { createComicPops } from './comic.js';
 
 const STEP = 1 / 120; // fixed physics step, independent of frame rate
 const RUN_SECONDS = 90;
@@ -41,12 +42,13 @@ function writeBest(score) {
   }
 }
 
-export function createGame(canvas, { config, hud, quality = 'high' }) {
-  const view = createGameScene(canvas, { quality });
+export function createGame(canvas, { config, hud, comicHost, quality = 'high' }) {
+  const view = createGameScene(canvas, { quality, accent: config.deck.ink });
   view.applyConfig(config);
+  const comic = createComicPops(comicHost ?? canvas.parentElement);
 
   let track = createTrack({ seed: (Math.random() * 1e9) | 0 });
-  let skater = createSkater();
+  let skater = createSkater({ wheelbase: config.shape.wheelbase });
   let pendingTricks = [];
   let holding = false;
   let timeLeft = RUN_SECONDS;
@@ -54,6 +56,7 @@ export function createGame(canvas, { config, hud, quality = 'high' }) {
   let status = 'ready'; // ready | playing | over
   let accumulator = 0;
   let last = 0;
+  let slowMotion = 0; // seconds of dilated time remaining
   let running = true;
   let frameHandle = 0;
 
@@ -158,18 +161,79 @@ export function createGame(canvas, { config, hud, quality = 'high' }) {
     });
     pendingTricks = [];
 
-    for (const event of events) {
-      if (event.type === 'land') {
-        hud.flashTrick(event.label, event.points, event.multiplier);
-      } else if (event.type === 'bail') {
-        hud.flashBail(event.reason);
-      } else if (event.type === 'grindStart') {
-        hud.flashTrick('Grind', 0, skater.multiplier);
-      }
-    }
+    for (const event of events) handleEvent(event, dt);
 
     timeLeft -= dt;
     if (timeLeft <= 0) finish();
+  }
+
+  /** How loud a landing should be, from what was actually done with it. */
+  function tierFor(event) {
+    if (event.tricks >= 2 || event.multiplier >= 3.5) return 'huge';
+    if (event.tricks >= 1 || event.airTime > 0.42) return 'big';
+    return 'small';
+  }
+
+  function handleEvent(event, dt) {
+    // Grind ticks fire every physics step, so only project when a pop-up
+    // actually needs a screen position.
+    let cached = null;
+    const screen = () => (cached ??= view.projectBoard(skater));
+    const near = () => {
+      const where = screen();
+      return {
+        x: where.x + (Math.random() - 0.5) * 0.14,
+        y: where.y - 0.13 - Math.random() * 0.1,
+      };
+    };
+
+    switch (event.type) {
+      case 'pop':
+        view.effects.burst(skater.x, skater.y, 0, 6, 16);
+        break;
+
+      case 'grinding':
+        view.effects.grindSparks(skater.x - 1.4, skater.y, 0, dt, skater.vx);
+        break;
+
+      case 'grindStart':
+        hud.flashTrick('Grind', 0, skater.multiplier);
+        view.effects.burst(skater.x, skater.y, 0, 14, 26);
+        view.effects.addShake(0.12);
+        comic.pop({ tier: 'grind', detail: `${skater.multiplier.toFixed(1)}x`, ...near() });
+        break;
+
+      case 'land': {
+        hud.flashTrick(event.label, event.points, event.multiplier);
+        const tier = tierFor(event);
+        view.effects.impactRing(skater.x, skater.y, 0, tier === 'huge' ? 1.5 : 1);
+        view.effects.burst(skater.x, skater.y, 0, tier === 'huge' ? 30 : 14, 30);
+        view.effects.addShake(tier === 'huge' ? 0.5 : 0.18);
+        comic.pop({
+          tier,
+          detail: `${event.label} +${Math.round(event.points)}`,
+          ...near(),
+        });
+        if (tier === 'huge') {
+          // The closest thing to a cutscene that does not take the run away
+          // from you: time dips, the camera leans in, the panel shouts.
+          comic.flourish(event.label, `${Math.round(event.points)} pts · ${event.multiplier.toFixed(1)}x`);
+          view.punchIn(1);
+          slowMotion = 0.42;
+        }
+        break;
+      }
+
+      case 'bail':
+        hud.flashBail(event.reason);
+        view.effects.burst(skater.x, skater.y, 0, 22, 34);
+        view.effects.addShake(0.6);
+        comic.pop({ tier: 'bail', detail: event.reason, x: screen().x, y: screen().y - 0.12 });
+        break;
+
+      default:
+        break;
+    }
   }
 
   function frame(now) {
@@ -180,7 +244,13 @@ export function createGame(canvas, { config, hud, quality = 'high' }) {
     last = now;
 
     if (status === 'playing') {
-      accumulator += delta;
+      let scale = 1;
+      if (slowMotion > 0) {
+        slowMotion = Math.max(0, slowMotion - delta);
+        // Ease back to full speed rather than snapping out of it.
+        scale = 0.38 + 0.62 * (1 - Math.min(1, slowMotion / 0.42));
+      }
+      accumulator += delta * scale;
       let guard = 0;
       while (accumulator >= STEP && guard++ < 12) {
         step(STEP);
@@ -192,6 +262,7 @@ export function createGame(canvas, { config, hud, quality = 'high' }) {
       hud.setCharge(skater.charge);
     }
 
+    view.stepEffects(Math.min(delta, 1 / 30));
     track.ensureAhead(skater.x);
     view.syncFeatures(track, skater.x);
     view.syncProps(skater.x);
@@ -209,7 +280,8 @@ export function createGame(canvas, { config, hud, quality = 'high' }) {
 
   function restart() {
     track = createTrack({ seed: (Math.random() * 1e9) | 0 });
-    skater = createSkater();
+    skater = createSkater({ wheelbase: config.shape.wheelbase });
+    comic.clear();
     pendingTricks = [];
     holding = false;
     timeLeft = RUN_SECONDS;
@@ -248,8 +320,8 @@ export function createGame(canvas, { config, hud, quality = 'high' }) {
     resize(width, height) {
       view.resize(width, height);
     },
-    applyConfig(config) {
-      view.applyConfig(config);
+    applyConfig(next) {
+      view.applyConfig(next);
     },
     start,
     restart,
@@ -265,6 +337,7 @@ export function createGame(canvas, { config, hud, quality = 'high' }) {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
+      comic.dispose();
       view.dispose();
     },
   };
