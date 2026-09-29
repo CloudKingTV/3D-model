@@ -40,8 +40,9 @@ on a desk. Ninety seconds, score as much as you can.
 - **S / W** (or swipe down / up) pop shuv and 360 shuv.
 - A flip and a shuv thrown together make a varial — they turn on separate axes,
   so both land in one air.
-- Land on a rail or a ledge to grind it. Every clean landing raises the
-  multiplier; a bail resets it.
+- Land on a rail or a ledge to grind it. Both are solid: roll into one and you
+  bail, so ollie onto it. Every clean landing raises the multiplier; a bail
+  resets it.
 
 Landings are scored for what you did with them, and the noise matches: a comic
 starburst for an ordinary one, and for anything really good a full-panel
@@ -100,6 +101,7 @@ npm run preview         # serve the built site
 npm run build:artifact  # repackage the build as a Claude Artifact page
 npm test                # headless checks for the game's effects
 npm run sim             # simulate scripted runs and print the score spread
+npm run sim:clip        # count physics steps the board spends inside anything
 ```
 
 Requires Node 20+. The only runtime dependency is [three.js](https://threejs.org).
@@ -136,15 +138,23 @@ src/game/comic.js    comic starbursts and the big-landing flourish
 src/game/index.js    game loop, input and run lifecycle
 test/effects.test.mjs  effects geometry and lifetimes, headless
 test/run.sim.mjs       simulated runs used to tune scoring
+test/clipping.sim.mjs  clip detector: time spent inside solid geometry
 ```
 
 Two details worth knowing if you want to extend it:
 
-- **Collision** uses both wheel contact points rather than one sample at the
-  board's centre, and sweeps the path travelled each step rather than testing
-  only where the board ended up. A 96mm deck against a 200mm ledge is long
-  enough that a single point lets the nose through, and at full pop the board
-  covers more than a unit per 120Hz step — enough to jump clean over a rail.
+- **Collision** treats the board as a rigid plank. It rests on the lowest line
+  that clears all five contact points (both wheels, the middle, and the nose
+  and tail tips at their real kick height, measured from the deck geometry by
+  `noseLiftFor(spec)`), so a tail still hanging over a rail keeps the board on
+  it. In the air the path travelled each step is swept in short sub-steps:
+  square faces first, then landing on first contact, then the table edge. The
+  ramp meshes and the physics read the same profile functions in `track.js`,
+  so what you see is exactly what the board collides with. Bails move the
+  board too, and are clamped against the same geometry.
+  `npm run sim:clip` drives whole runs with several input styles, seeds and
+  extreme board shapes and fails if any step has part of the board inside
+  anything.
 - **Deck geometry** is a parametric surface. `deckKick(x, spec)` gives the
   centre-line height and `deckHalfWidth(x, spec)` the outline; the solid is that
   surface plus a copy offset along its own normal, so the deck keeps a constant

@@ -2,6 +2,7 @@ import { createTrack } from './track.js';
 import { createSkater, stepSkater, PHYSICS } from './skater.js';
 import { createGameScene } from './scene.js';
 import { createComicPops } from './comic.js';
+import { noseLiftFor } from '../lib/geometry.js';
 
 const STEP = 1 / 120; // fixed physics step, independent of frame rate
 const RUN_SECONDS = 90;
@@ -47,8 +48,20 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
   view.applyConfig(config);
   const comic = createComicPops(comicHost ?? canvas.parentElement);
 
+  /** Physics sized to the board actually on screen, whatever shape it is. */
+  function newSkater() {
+    const spec = view.board.spec;
+    return createSkater({
+      wheelbase: spec.wheelbase,
+      length: spec.length,
+      width: spec.width,
+      height: Math.abs(spec.groundY),
+      noseLift: noseLiftFor(spec),
+    });
+  }
+
   let track = createTrack({ seed: (Math.random() * 1e9) | 0 });
-  let skater = createSkater({ wheelbase: config.shape.wheelbase });
+  let skater = newSkater();
   let pendingTricks = [];
   let holding = false;
   let timeLeft = RUN_SECONDS;
@@ -280,7 +293,7 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
 
   function restart() {
     track = createTrack({ seed: (Math.random() * 1e9) | 0 });
-    skater = createSkater({ wheelbase: config.shape.wheelbase });
+    skater = newSkater();
     comic.clear();
     pendingTricks = [];
     holding = false;

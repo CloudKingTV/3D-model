@@ -63,6 +63,19 @@ export function shapeBounds(spec) {
   };
 }
 
+/**
+ * How far the underside of the nose tip sits above the wheel line. This is
+ * what decides whether the nose clears a step, and it swings a long way with
+ * the shape — about 1.1 on a low board with a mellow kick, 2.6 on a tall one
+ * with a steep kick — so collision reads it from here rather than guessing.
+ */
+export function noseLiftFor(spec) {
+  const x = spec.halfLength * 0.985; // just inside the rounded tip
+  const slope = deckSlope(x, spec);
+  const underside = deckKick(x, spec) - spec.thickness / Math.sqrt(1 + slope * slope);
+  return underside - spec.groundY; // groundY is the wheel line, below zero
+}
+
 function smoothstep(edge0, edge1, x) {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);

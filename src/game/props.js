@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { shade, rgba } from '../lib/textures.js';
+import { kickerHeight, quarterHeight, funboxHeight, RAIL_RADIUS } from './track.js';
 
 /**
  * Every object in the park, built in code. Nothing here is downloaded.
@@ -145,20 +146,19 @@ export function createConcreteTexture() {
 
 /* ------------------------------------------------------------ obstacles */
 
-/** Extrude a 2D side profile across the ramp's width. */
+/**
+ * Extrude a 2D side profile across the ramp's width.
+ *
+ * No bevel: ExtrudeGeometry's bevel grows the outline outward, which lifted
+ * every riding surface 0.12 above where the physics had the wheels.
+ */
 function extrudeProfile(points, width, material) {
   const shape = new THREE.Shape();
   shape.moveTo(points[0][0], points[0][1]);
   for (const [x, y] of points.slice(1)) shape.lineTo(x, y);
   shape.closePath();
 
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: width,
-    bevelEnabled: true,
-    bevelThickness: 0.12,
-    bevelSize: 0.12,
-    bevelSegments: 2,
-  });
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
   geometry.translate(0, 0, -width / 2);
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
@@ -166,40 +166,29 @@ function extrudeProfile(points, width, material) {
   return mesh;
 }
 
-function kickerProfile(length, height, steps = 18) {
+/**
+ * Sample a riding surface from the same function the physics uses, closed off
+ * underneath. Nothing about a ramp's shape is decided here, so the mesh cannot
+ * drift from what the board actually rides on.
+ */
+function sampleProfile(length, heightAt, steps, corners = []) {
+  // Hit any sharp corners exactly; uniform samples would cut across them.
+  const xs = new Set(corners);
+  for (let i = 1; i <= steps; i += 1) xs.add((i / steps) * length);
   const points = [[0, 0]];
-  for (let i = 1; i <= steps; i += 1) {
-    const t = i / steps;
-    points.push([t * length, height * t ** 1.5]);
-  }
+  for (const x of [...xs].sort((a, b) => a - b)) points.push([x, heightAt(x)]);
   points.push([length, 0]);
   return points;
 }
 
-function quarterProfile(length, height, steps = 20) {
-  const points = [[0, 0]];
-  for (let i = 1; i <= steps; i += 1) {
-    const u = Math.min(i / steps, 0.94);
-    points.push([u * length, height * (1 - Math.sqrt(Math.max(0, 1 - u * u)))]);
-  }
-  points.push([length, height], [length, 0]);
-  return points;
-}
-
-function funboxProfile(length, height, rampLength, steps = 12) {
-  const points = [[0, 0]];
-  for (let i = 1; i <= steps; i += 1) {
-    const t = i / steps;
-    points.push([t * rampLength, height * t ** 1.4]);
-  }
-  points.push([length - rampLength, height]);
-  for (let i = steps - 1; i >= 1; i -= 1) {
-    const t = i / steps;
-    points.push([length - t * rampLength, height * t ** 1.4]);
-  }
-  points.push([length, 0]);
-  return points;
-}
+const kickerProfile = (f) => sampleProfile(f.length, (x) => kickerHeight(x / f.length, f.height), 24);
+const quarterProfile = (f) => sampleProfile(f.length, (x) => quarterHeight(x / f.length, f.height), 32);
+const funboxProfile = (f) => sampleProfile(
+  f.length,
+  (x) => funboxHeight(x, f),
+  40,
+  [f.rampLength, f.length - f.rampLength],
+);
 
 /**
  * Build the mesh for one track feature, positioned in its own local space with
@@ -210,29 +199,28 @@ export function createFeatureMesh(feature, materials) {
 
   switch (feature.kind) {
     case 'kicker':
-      group.add(extrudeProfile(kickerProfile(feature.length, feature.height), RAMP_WIDTH, materials.ramp));
+      group.add(extrudeProfile(kickerProfile(feature), RAMP_WIDTH, materials.ramp));
       break;
 
     case 'quarter': {
-      group.add(extrudeProfile(quarterProfile(feature.length, feature.height), RAMP_WIDTH, materials.ramp));
-      // Steel coping along the lip, which is what you actually hit.
+      group.add(extrudeProfile(quarterProfile(feature), RAMP_WIDTH, materials.ramp));
+      // Steel coping along the lip, sitting flush with it: centred on the lip
+      // it stood a third of its own height proud of the surface the wheels
+      // leave from, so boards went through it.
+      const radius = 0.34;
       const coping = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.34, 0.34, RAMP_WIDTH, 14),
+        new THREE.CylinderGeometry(radius, radius, RAMP_WIDTH, 14),
         materials.metal,
       );
       coping.rotation.x = Math.PI / 2;
-      coping.position.set(feature.length, feature.height, 0);
+      coping.position.set(feature.length, feature.height - radius + 0.04, 0);
       coping.castShadow = true;
       group.add(coping);
       break;
     }
 
     case 'funbox':
-      group.add(extrudeProfile(
-        funboxProfile(feature.length, feature.height, feature.rampLength),
-        RAMP_WIDTH,
-        materials.ramp,
-      ));
+      group.add(extrudeProfile(funboxProfile(feature), RAMP_WIDTH, materials.ramp));
       break;
 
     case 'ledge': {
@@ -259,32 +247,35 @@ export function createFeatureMesh(feature, materials) {
     }
 
     case 'rail': {
+      // The feature's height is the *top* of the bar — the surface you grind —
+      // so the bar sits one radius below it. Centred on it, grinds sank into
+      // the bar by its radius.
+      const barY = feature.height - RAIL_RADIUS;
       const bar = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.42, 0.42, feature.length, 16),
+        new THREE.CylinderGeometry(RAIL_RADIUS, RAIL_RADIUS, feature.length, 18),
         materials.metal,
       );
       bar.rotation.z = Math.PI / 2;
-      bar.position.set(feature.length / 2, feature.height, 0);
+      bar.position.set(feature.length / 2, barY, 0);
       bar.castShadow = true;
       group.add(bar);
 
-      // Feet, angled in like a real flat bar.
-      for (const t of [0.1, 0.9]) {
-        for (const side of [-1, 1]) {
-          const leg = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.28, 0.28, feature.height, 10),
-            materials.metal,
-          );
-          leg.position.set(feature.length * t, feature.height / 2, side * 1.5);
-          leg.rotation.x = side * 0.28;
-          leg.castShadow = true;
-          group.add(leg);
-        }
-        const foot = new THREE.Mesh(
-          new THREE.BoxGeometry(2.4, 0.3, 5),
+      // A post at each end, straight under the bar, where the board meets it.
+      // (They used to sit a tenth of the way in, splayed out to the board's
+      // edges, which is exactly where a board rolling underneath went through.)
+      const inset = 0.45;
+      for (const x of [inset, feature.length - inset]) {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.5, barY, 0.5),
           materials.metal,
         );
-        foot.position.set(feature.length * t, 0.15, 0);
+        post.position.set(x, barY / 2, 0);
+        post.castShadow = true;
+        group.add(post);
+
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.24, 3.2), materials.metal);
+        foot.position.set(x, 0.12, 0);
+        foot.castShadow = true;
         foot.receiveShadow = true;
         group.add(foot);
       }

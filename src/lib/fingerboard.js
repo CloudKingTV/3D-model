@@ -392,6 +392,10 @@ export function createFingerboard() {
     get groundY() {
       return spec.groundY;
     },
+    /** The resolved shape: dimensions the game's physics needs to match. */
+    get spec() {
+      return spec;
+    },
     /** Half-extents of the current board, for framing the camera. */
     get bounds() {
       return shapeBounds(spec);

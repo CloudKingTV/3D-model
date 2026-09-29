@@ -212,18 +212,29 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722' }
     pitchGroup.position.set(skater.x, skater.y - contactY / 2, 0);
     board.object.position.y = -contactY / 2;
 
-    pitchGroup.rotation.z = skater.pitch + (skater.state === 'bail' ? skater.bailTimer * 2.4 : 0);
+    // A bail flips the deck over sideways (the physics keeps its lowest edge on
+    // the surface); it used to spin end over end around its middle, which
+    // swung the nose and tail straight through the table.
+    pitchGroup.rotation.z = skater.pitch;
     yawGroup.rotation.y = skater.yaw;
-    rollGroup.rotation.x = skater.roll;
+    rollGroup.rotation.x = skater.state === 'bail' ? skater.bailRoll : skater.roll;
 
-    // Crouch into the pop: the board squats before it leaves the ground.
-    const squat = skater.charge * 0.5;
-    board.object.position.y -= squat * 0.35;
-    board.object.rotation.z = -squat * 0.1;
+    // Loading an ollie: the tail goes down and the nose comes up, pivoting on
+    // the back wheels — which stay on the ground rather than sinking into it.
+    const load = skater.charge * 0.14;
+    if (load > 0) {
+      pitchGroup.rotation.z += load;
+      pitchGroup.position.y += skater.halfBase * Math.tan(load);
+    }
 
-    // Metal on metal: a grind should buzz rather than glide perfectly.
     if (skater.state === 'grind') {
-      pitchGroup.position.y += (Math.random() - 0.5) * 0.06;
+      // On a rail it is a 50-50: the trucks' hangers ride the bar and the
+      // wheels hang either side of it, rather than the wheels balancing on top.
+      if (skater.grindSurface?.kind === 'rail') {
+        pitchGroup.position.y -= Math.max(0, board.spec.wheelRadius - 0.22);
+      }
+      // Metal on metal buzzes — upwards only, so it never dips into the rail.
+      pitchGroup.position.y += Math.random() * 0.05;
       rollGroup.rotation.x += (Math.random() - 0.5) * 0.03;
     }
 
