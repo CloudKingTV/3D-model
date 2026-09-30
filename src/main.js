@@ -1,5 +1,6 @@
 import { createStore, buildShareUrl } from './lib/state.js';
 import { createGame } from './game/index.js';
+import { createMarbleGame } from './marbles/index.js';
 import { createGameHud } from './ui/gameHud.js';
 import { createViewer } from './lib/viewer.js';
 import { createPanel } from './ui/panel.js';
@@ -125,6 +126,7 @@ function tool(label, iconHtml, onClick) {
 }
 
 tool('Skate it', ICONS.play, () => enterGame());
+tool('Marble race', ICONS.marble, () => enterMarbles());
 
 const spinButton = tool('Toggle auto-spin', ICONS.spin, () => {
   store.patch({ scene: { autoRotate: !store.config.scene.autoRotate } });
@@ -225,10 +227,25 @@ function enterGame() {
   if (new URLSearchParams(location.search).has('debug')) window.__game = game;
 }
 
+/** The marble races share the game stage, one mode at a time. */
+function enterMarbles() {
+  if (game) return;
+  garageStage.hidden = true;
+  gameStage.hidden = false;
+  viewer.pause();
+  game = createMarbleGame(playfield, {
+    host: gameStage,
+    quality: isTouchDevice() ? 'low' : 'high',
+    onExit: exitGame,
+  });
+  sizeGame();
+  if (new URLSearchParams(location.search).has('debug')) window.__game = game;
+}
+
 function exitGame() {
   if (!game) return;
   game.dispose();
-  gameHud.dispose();
+  gameHud?.dispose();
   game = null;
   gameHud = null;
   gameStage.innerHTML = '';

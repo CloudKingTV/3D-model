@@ -133,6 +133,35 @@ so the board reads as tiny against things you already know the size of. A
 tilt-shift pass keeps a band in focus and softens the rest, which is what a
 macro lens does to something this small, and it tracks the board.
 
+## Marble race
+
+**Marble race** in the garage's top bar opens a second game. Pick one of 24
+marbles — Ruby, Chrome, Galaxy, Lava, Earth, an eight-ball and the rest — and
+watch all 24 race down a marble run generated fresh for that race. The camera
+follows yours (or the leader, or the whole run), a live leaderboard shows the
+order, and the results end on a podium.
+
+Every run is a new layout (`src/marbles/track.js`), stitched from modules:
+banked curves, a spiral, a pachinko-style peg field, pop bumpers that kick,
+a spinning paddle, a funnel, rolling waves, a split into two lanes, boost pads,
+a steep plunge, then the finish line and a catch basin. The generator rejects
+any layout that passes through itself, and any where some line down the chute
+— either edge or the middle — rises anywhere, because a rise is exactly a
+pocket a marble can come to rest in.
+
+The marbles really roll (`src/marbles/physics.js`): spheres against the run's
+own triangles through a spatial hash, against each other, against pegs,
+bumpers and the spinner, with gravity, a little rolling resistance and air
+drag, stepped at 200Hz so nothing tunnels. A marble that jumps the run is put
+back on it a little way behind.
+
+If anything is still on the run 30 seconds after the winner finishes, a wall
+of fire comes down the run from the start and burns whatever it catches, which
+ends the race. It is meant to be rare, and it is: across 40 simulated races
+(`npm run sim:marbles`) every marble but one rolled home on its own, and the
+fire was needed in one race. The test also pins a marble in place to check the
+fire does come for it and the race does end.
+
 ## Trying it on your phone
 
 ### Right now, no setup — over your Wi-Fi
@@ -172,8 +201,9 @@ npm run dev             # dev server at http://localhost:5173
 npm run build           # production build into dist/
 npm run preview         # serve the built site
 npm run build:artifact  # repackage the build as a Claude Artifact page
-npm test                # effects checks, then the park physics simulation
+npm test                # effects checks, the park simulation, 16 marble races
 npm run sim             # just the park simulation (SEEDS=20 for a longer soak)
+npm run sim:marbles     # 40 simulated marble races, with the fire-wall stats
 ```
 
 Requires Node 20+. The only runtime dependency is [three.js](https://threejs.org).
@@ -217,7 +247,15 @@ src/game/tiltshift.js the miniature-faking blur
 src/game/effects.js  sparks, flip trails, impact rings, screen shake
 src/game/comic.js    comic starbursts and the big-landing flourish
 src/game/index.js    game loop, input and run lifecycle
+src/marbles/track.js    marble run generator: path, triangles, obstacles (pure)
+src/marbles/physics.js  marble physics, placings, respawns, the fire wall (pure)
+src/marbles/designs.js  the 24 marbles, drawn on canvases
+src/marbles/scene.js    sky, the run, obstacles, marbles, fire, race camera
+src/marbles/index.js    picker → countdown → race → results
+src/ui/marbleHud.js     picker, leaderboard, fire warnings, podium
 test/effects.test.mjs  effects geometry and lifetimes, headless
+test/marbles.sim.mjs   whole races on generated tracks: finish rates, fire
+                       wall use, and a stuck marble the fire must clear
 test/park.sim.mjs      scripted lines round the park, plus random sessions
                        checked every step for any part of the board inside
                        anything

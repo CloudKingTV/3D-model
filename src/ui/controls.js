@@ -26,6 +26,7 @@ export const ICONS = {
   upload: icon('<path d="M12 16V5"/><path d="M8 8.5 12 4.5l4 4"/><path d="M5 14v5.5h14V14"/>'),
   pencil: icon('<path d="M4 20h4L20 8l-4-4L4 16z"/>'),
   play: icon('<path d="M7 4.8 19 12 7 19.2z"/>'),
+  marble: icon('<circle cx="12" cy="12" r="8"/><path d="M7.5 10c2.5-2.5 6.5-2 9 1.5M8 14.5c2 1.8 5 2 7.5.5"/>'),
 };
 
 export function group(label, content, valueNode = null) {
