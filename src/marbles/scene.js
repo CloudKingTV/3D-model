@@ -141,7 +141,6 @@ function createFireMaterial() {
 export function createMarbleRenderer(canvas, { quality = 'high' } = {}) {
   const phone = quality !== 'high';
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !phone, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, phone ? 1.25 : 2));
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
@@ -386,7 +385,23 @@ export function createMarbleScene(renderer, { quality = 'high', track }) {
   const wantLook = new THREE.Vector3();
   let first = true;
 
-  function place(race, subjectId, dt, { preview = false, time = 0 } = {}) {
+  const focus = new THREE.Vector3();
+  let runYaw = null; // the run's direction under the followed marble, smoothed
+
+  const shortest = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
+
+  function overviewSpot() {
+    const b = track.bounds;
+    const c = new THREE.Vector3((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2);
+    const size = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
+    return { eye: new THREE.Vector3(c.x - size * 0.6, c.y + size * 0.5, c.z - size * 0.6), centre: c };
+  }
+
+  /**
+   * Put the camera where it should be this frame. `controls` carries the
+   * player's own orbit (when following a marble) or flight (overview).
+   */
+  function place(race, subjectId, dt, { preview = false, time = 0, controls = null } = {}) {
     const samples = track.samples;
     if (preview) {
       // Fly slowly down the run, looking along it.
@@ -395,29 +410,79 @@ export function createMarbleScene(renderer, { quality = 'high', track }) {
       const q = samples[Math.min(samples.length - 1, i + 14)];
       wantEye.set(p.x - p.r[0] * 10, p.y + 12, p.z - p.r[2] * 10);
       wantLook.set(q.x, q.y, q.z);
-    } else if (mode === 'overview') {
-      const c = new THREE.Vector3(
-        (track.bounds.minX + track.bounds.maxX) / 2,
-        (track.bounds.minY + track.bounds.maxY) / 2,
-        (track.bounds.minZ + track.bounds.maxZ) / 2,
-      );
-      const size = Math.max(track.bounds.maxX - track.bounds.minX, track.bounds.maxZ - track.bounds.minZ);
-      const a = time * 0.05;
-      wantEye.set(c.x + Math.cos(a) * size * 0.75, c.y + size * 0.55, c.z + Math.sin(a) * size * 0.75);
-      wantLook.copy(c);
+      const k = first ? 1 : 1 - Math.exp(-dt * 1.5);
+      eye.lerp(wantEye, k);
+      look.lerp(wantLook, k);
+      first = false;
+      camera.position.copy(eye);
+      camera.lookAt(look);
+    } else if (mode === 'overview' && controls) {
+      const fly = controls.fly;
+      if (!fly.ready) {
+        if (fly.home) {
+          // Back over the whole run, looking at the middle of it.
+          const { eye: spot, centre } = overviewSpot();
+          fly.x = spot.x; fly.y = spot.y; fly.z = spot.z;
+          const d = centre.clone().sub(spot).normalize();
+          fly.yaw = Math.atan2(d.z, d.x);
+          fly.pitch = Math.asin(d.y);
+        } else {
+          // Take off from wherever the camera already is: no jump.
+          const d = new THREE.Vector3();
+          camera.getWorldDirection(d);
+          fly.x = camera.position.x; fly.y = camera.position.y; fly.z = camera.position.z;
+          fly.yaw = Math.atan2(d.z, d.x);
+          fly.pitch = Math.asin(Math.max(-1, Math.min(1, d.y)));
+        }
+        fly.ready = true;
+        fly.home = false;
+      }
+      // Keep the flight near the run and above the ground, so the track is
+      // never more than a turn of the head away.
+      const b = track.bounds;
+      const margin = Math.max(40, Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.5);
+      fly.x = Math.max(b.minX - margin, Math.min(b.maxX + margin, fly.x));
+      fly.z = Math.max(b.minZ - margin, Math.min(b.maxZ + margin, fly.z));
+      fly.y = Math.max(groundY + 1.5, Math.min(b.maxY + margin, fly.y));
+      const cp = Math.cos(fly.pitch);
+      camera.position.set(fly.x, fly.y, fly.z);
+      look.set(fly.x + Math.cos(fly.yaw) * cp * 30, fly.y + Math.sin(fly.pitch) * 30, fly.z + Math.sin(fly.yaw) * cp * 30);
+      camera.lookAt(look);
+      eye.copy(camera.position);
     } else {
       const m = race.marbles[subjectId];
       const p = samples[Math.min(samples.length - 1, m.index)];
-      // Behind and above, along the run rather than the marble's bounce.
-      wantEye.set(m.x - p.t[0] * 9 + p.u[0] * 5.5, m.y - p.t[1] * 9 + 5.5, m.z - p.t[2] * 9 + p.u[2] * 5.5);
-      wantLook.set(m.x + p.t[0] * 5, m.y + p.t[1] * 5, m.z + p.t[2] * 5);
+      // Orbit round the marble. The angle is measured from "behind, along
+      // the run", so a look behind stays a look behind as the run turns.
+      const heading = Math.atan2(p.t[2], p.t[0]);
+      if (runYaw === null || first) {
+        runYaw = heading;
+        focus.set(m.x, m.y, m.z);
+      }
+      runYaw += shortest(runYaw, heading) * (1 - Math.exp(-dt * 3));
+      const k = first ? 1 : 1 - Math.exp(-dt * 12);
+      focus.lerp(wantLook.set(m.x, m.y, m.z), k);
+      first = false;
+
+      const orbit = controls?.follow ?? { yaw: 0, pitch: 0.55, distance: 10.5 };
+      const a = runYaw + Math.PI + orbit.yaw;
+      const cp = Math.cos(orbit.pitch);
+      eye.set(
+        focus.x + Math.cos(a) * cp * orbit.distance,
+        focus.y + Math.sin(orbit.pitch) * orbit.distance,
+        focus.z + Math.sin(a) * cp * orbit.distance,
+      );
+      // Looking along the run when behind the marble; straight at it once
+      // swung round to the side or the front.
+      const lead = Math.max(0, Math.cos(orbit.yaw)) * 4;
+      look.set(
+        focus.x + Math.cos(runYaw) * lead,
+        focus.y + 0.4,
+        focus.z + Math.sin(runYaw) * lead,
+      );
+      camera.position.copy(eye);
+      camera.lookAt(look);
     }
-    const k = first ? 1 : 1 - Math.exp(-dt * (preview ? 1.5 : 4));
-    eye.lerp(wantEye, k);
-    look.lerp(wantLook, k);
-    first = false;
-    camera.position.copy(eye);
-    camera.lookAt(look);
 
     sun.position.set(look.x + 40, look.y + 90, look.z + 30);
     sun.target.position.copy(look);
@@ -509,6 +574,13 @@ export function createMarbleScene(renderer, { quality = 'high', track }) {
     effects,
     setMode(next) {
       mode = next;
+    },
+    get cameraPosition() {
+      return camera.position.clone();
+    },
+    /** Shadows are the last thing a struggling phone gives up. */
+    setShadows(on) {
+      sun.castShadow = on;
     },
     get mode() {
       return mode;

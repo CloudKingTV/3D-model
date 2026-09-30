@@ -31,7 +31,9 @@ export function createMarbleHud(host, {
   const board = el('ol', { class: 'mhud__board' });
   const banner = el('div', { class: 'mhud__banner', 'data-show': 'false' });
   const count = el('div', { class: 'mhud__count', 'data-show': 'false' });
-  const cameraButton = el('button', { class: 'hud__exit', type: 'button', text: 'Camera: mine', onclick: () => onCamera() });
+  const hintChip = el('div', { class: 'mhud__hint', 'data-show': 'false' });
+  let hintTimer = 0;
+  const cameraButton = el('button', { class: 'hud__exit', type: 'button', text: '🎥 Mine', onclick: () => onCamera() });
   const speedButton = el('button', { class: 'hud__exit', type: 'button', text: '1×', onclick: () => onSpeed() });
   const bar = el('div', { class: 'mhud__bar', hidden: 'hidden' }, [
     el('div', { class: 'mhud__left' }, [clock, place]),
@@ -41,7 +43,7 @@ export function createMarbleHud(host, {
       el('button', { class: 'hud__exit', type: 'button', text: 'Garage', onclick: () => onExit() }),
     ]),
   ]);
-  root.append(bar, board, banner, count);
+  root.append(bar, board, banner, count, hintChip);
   host.append(root, overlay);
 
   let selected = 0;
@@ -95,7 +97,14 @@ export function createMarbleHud(host, {
     },
 
     setCamera(mode) {
-      cameraButton.textContent = `Camera: ${mode}`;
+      cameraButton.textContent = `🎥 ${{ mine: 'Mine', leader: 'Leader', overview: 'Fly' }[mode] ?? mode}`;
+    },
+    /** A short how-to at the bottom of the screen, gone after a few seconds. */
+    hint(text) {
+      hintChip.textContent = text;
+      hintChip.dataset.show = 'true';
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(() => { hintChip.dataset.show = 'false'; }, 5000);
     },
     setSpeed(speed) {
       speedButton.textContent = `${speed}×`;
@@ -176,6 +185,7 @@ export function createMarbleHud(host, {
     },
 
     dispose() {
+      clearTimeout(hintTimer);
       root.remove();
       overlay.remove();
     },

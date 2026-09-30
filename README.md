@@ -162,6 +162,25 @@ ends the race. It is meant to be rare, and it is: across 40 simulated races
 fire was needed in one race. The test also pins a marble in place to check the
 fire does come for it and the race does end.
 
+### Race camera
+
+The 🎥 button cycles **Mine → Leader → Fly** (`src/marbles/cameraControls.js`).
+
+| | Phone | Desktop |
+| --- | --- | --- |
+| Mine / Leader: swing round, look behind | swipe | drag |
+| Mine / Leader: zoom | pinch | scroll |
+| Fly: look around | drag | drag |
+| Fly: forward / back | pinch | scroll, W / S or arrows |
+| Fly: slide sideways, up / down | two-finger drag | A / D, Q / E (Shift is faster) |
+| Reset (chase view, or back over the whole run) | double-tap | double-click |
+
+The chase angle is kept relative to the run, so a view looking back at the
+pack stays that way through the bends. Flying starts from wherever the camera
+was and stays within reach of the run. On phones the picker, leaderboard and
+buttons tighten up, and the renderer drops resolution and then shadows if the
+frame rate sags.
+
 ## Trying it on your phone
 
 ### Right now, no setup — over your Wi-Fi
@@ -251,6 +270,7 @@ src/marbles/track.js    marble run generator: path, triangles, obstacles (pure)
 src/marbles/physics.js  marble physics, placings, respawns, the fire wall (pure)
 src/marbles/designs.js  the 24 marbles, drawn on canvases
 src/marbles/scene.js    sky, the run, obstacles, marbles, fire, race camera
+src/marbles/cameraControls.js  swipe / pinch / fly controls for the race camera
 src/marbles/index.js    picker → countdown → race → results
 src/ui/marbleHud.js     picker, leaderboard, fire warnings, podium
 test/effects.test.mjs  effects geometry and lifetimes, headless

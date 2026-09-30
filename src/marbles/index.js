@@ -4,6 +4,8 @@ import { createMarbleRenderer, createMarbleScene } from './scene.js';
 import { MARBLES } from './designs.js';
 import { createMarbleHud } from '../ui/marbleHud.js';
 import { createComicPops } from '../game/comic.js';
+import { createCameraControls, FOLLOW_DEFAULT } from './cameraControls.js';
+import { isTouchDevice } from '../lib/device.js';
 
 /**
  * The marble races: pick a marble, watch 24 of them race down a freshly
@@ -37,6 +39,8 @@ function savePick(id) {
 export function createMarbleGame(canvas, { host, quality = 'high', onExit }) {
   const renderer = createMarbleRenderer(canvas, { quality });
   const comic = createComicPops(host);
+  const controls = createCameraControls(canvas);
+  const touch = isTouchDevice();
   let playerId = readPick();
   let seed = 0;
   let track = null;
@@ -66,9 +70,7 @@ export function createMarbleGame(canvas, { host, quality = 'high', onExit }) {
     },
     onCamera() {
       const modes = ['mine', 'leader', 'overview'];
-      const next = modes[(modes.indexOf(view.mode) + 1) % modes.length];
-      view.setMode(next);
-      hud.setCamera(next);
+      setCamera(modes[(modes.indexOf(view.mode) + 1) % modes.length]);
     },
     onSpeed() {
       speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
@@ -92,6 +94,8 @@ export function createMarbleGame(canvas, { host, quality = 'high', onExit }) {
 
   function newTrack() {
     view?.dispose();
+    controls.setEnabled(false);
+    Object.assign(controls.follow, FOLLOW_DEFAULT);
     seed = (Math.random() * 1e9) >>> 0;
     track = generateTrack(seed);
     race = createRace(track, MARBLES.length, { seed });
@@ -107,11 +111,31 @@ export function createMarbleGame(canvas, { host, quality = 'high', onExit }) {
     hud.setCamera(view.mode);
   }
 
+  const HINTS = touch
+    ? {
+      follow: 'Swipe to look around · pinch to zoom · double-tap to reset',
+      fly: 'Drag to look · pinch to fly · two fingers to slide · double-tap to reset',
+    }
+    : {
+      follow: 'Drag to look around · scroll to zoom · double-click to reset',
+      fly: 'WASD / arrows to fly · Q E down / up · drag to look · scroll to fly',
+    };
+
+  function setCamera(next) {
+    view.setMode(next);
+    hud.setCamera(next);
+    const flying = next === 'overview';
+    controls.setMode(flying ? 'fly' : 'follow');
+    // Take off from wherever the camera is now.
+    if (flying) controls.fly.ready = false;
+    hud.hint(flying ? HINTS.fly : HINTS.follow);
+  }
+
   function beginCountdown() {
     phase = 'countdown';
     countdown = 3.2;
-    view.setMode('mine');
-    hud.setCamera('mine');
+    setCamera('mine');
+    controls.setEnabled(true);
     hud.showCountdown(3);
   }
 
@@ -163,12 +187,50 @@ export function createMarbleGame(canvas, { host, quality = 'high', onExit }) {
     return playerId;
   }
 
+  /*
+   * Frame-rate guard, as in the park: every 1.5s, if the typical frame took
+   * over 25ms, render more cheaply — resolution first, shadows last.
+   */
+  const RATIOS = [2, 1.5, 1.25, 1, 0.8, 0.65];
+  let level = quality === 'high' ? 0 : 2;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, RATIOS[level]));
+  const frameTimes = [];
+  let windowStart = 0;
+  let settleUntil = 0;
+  function watchFrameRate(now, raw) {
+    if (now < settleUntil || raw <= 0 || raw > 400) return;
+    if (!frameTimes.length) windowStart = now;
+    frameTimes.push(raw);
+    if (now - windowStart < 1500 || frameTimes.length < 6) return;
+    const median = [...frameTimes].sort((a, b) => a - b)[frameTimes.length >> 1];
+    frameTimes.length = 0;
+    if (median <= 25 || level >= RATIOS.length - 1) return;
+    level += median > 60 ? 2 : 1;
+    level = Math.min(level, RATIOS.length - 1);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, RATIOS[level]));
+    renderer.setSize(size.width, size.height, false);
+    if (level >= RATIOS.length - 2) view.setShadows(false);
+    settleUntil = now + 800;
+    canvas.dataset.quality = String(level);
+  }
+
+  // Swipes and pinches are for the camera: never let them scroll or zoom
+  // the page (or the app the game is embedded in).
+  const stopGesture = (event) => {
+    if (event.target.closest?.('.hud__panel')) return;
+    event.preventDefault();
+  };
+  host.addEventListener('touchmove', stopGesture, { passive: false });
+
   function frame(now) {
     if (!running) return;
     frameHandle = requestAnimationFrame(frame);
-    const delta = last ? Math.min(0.05, (now - last) / 1000) : 0;
+    const raw = last ? now - last : 0;
+    const delta = Math.min(0.05, raw / 1000);
     last = now;
     clock += delta;
+    if (!settleUntil) settleUntil = now + 1000;
+    watchFrameRate(now, raw);
 
     if (phase === 'pick') {
       // Marbles settle behind the gate while you choose.
@@ -208,7 +270,8 @@ export function createMarbleGame(canvas, { host, quality = 'high', onExit }) {
 
     if (phase !== 'pick') hud.update(standings(race), playerId, race.time);
     view.pose(race, playerId, delta, clock);
-    view.place(race, subject(), Math.max(delta, 1 / 240), { preview: phase === 'pick', time: clock });
+    controls.update(delta);
+    view.place(race, subject(), Math.max(delta, 1 / 240), { preview: phase === 'pick', time: clock, controls });
     view.effects.update(Math.min(delta, 1 / 30));
     view.render();
   }
@@ -224,9 +287,21 @@ export function createMarbleGame(canvas, { host, quality = 'high', onExit }) {
       renderer.setSize(width, height, false);
       view?.resize(width, height);
     },
+    /** For tests: the live race and camera. */
+    get race() {
+      return race;
+    },
+    get controls() {
+      return controls;
+    },
+    get cameraPosition() {
+      return view?.cameraPosition;
+    },
     dispose() {
       running = false;
       cancelAnimationFrame(frameHandle);
+      host.removeEventListener('touchmove', stopGesture);
+      controls.dispose();
       view?.dispose();
       hud.dispose();
       comic.dispose();
