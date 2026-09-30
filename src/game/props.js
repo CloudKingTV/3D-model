@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { shade, rgba } from '../lib/textures.js';
+import { rng, canvasTexture, worldUV, mesh, block } from './canvasKit.js';
 import {
   TABLE,
-  DESK,
-  FLOOR_Y,
   RAIL_RADIUS,
   quarterRun,
   quarterProfile,
@@ -12,598 +11,547 @@ import {
 } from './park.js';
 
 /**
- * Every object in the park, built in code. Nothing here is downloaded.
+ * The fingerboard kit on the table, built in code. Nothing here is
+ * downloaded.
  *
- * Scale is the whole point: 1 unit = 10mm, so the table is 700mm deep, a mug is
- * 85mm across and the deck is 96mm long. The desk clutter is not decoration —
- * a pencil and a coffee mug beside the ramps are what make the board read as
- * tiny, because a viewer already knows how big those things are.
+ * The obstacles are drawn the way the real ones are made: birch plywood
+ * ramps screwed together, steel coping, powder-coated rails on base plates,
+ * a painted ledge with angle-iron edges. The rest of the table is whatever
+ * would be on it — a closed laptop, a stack of hardbacks, a ruler bridged
+ * across two erasers, a mug. Scale is the point: 1 unit = 10mm, and those
+ * are everyday things you already know the size of, which is what makes a
+ * 96mm board read as tiny.
+ *
+ * Every shape comes from the same description the physics uses (park.js),
+ * so what you see is exactly what the board rides.
  */
 
+/* ------------------------------------------------------------- textures */
 
-function rng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function canvasTexture(width, height, draw, { repeat = [1, 1], srgb = true } = {}) {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  draw(canvas.getContext('2d'), width, height);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeat[0], repeat[1]);
-  texture.anisotropy = 8;
-  return texture;
-}
-
-/* ------------------------------------------------------------- materials */
-
-/**
- * Desk oak. The grain is drawn at a deliberate scale — one board of the table
- * is ~120mm wide, so the planks and grain read as furniture next to the deck.
- */
-export function createTableTexture() {
-  return canvasTexture(1024, 1024, (ctx, w, h) => {
-    const base = '#8a5f38';
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, w, h);
-
-    const random = rng(42);
-    const planks = 6;
-    for (let i = 0; i < planks; i += 1) {
-      const y = (i / planks) * h;
-      const tone = 0.06 * (random() - 0.5);
-      ctx.fillStyle = shade(base, tone);
-      ctx.fillRect(0, y, w, h / planks);
-
-      // Grain runs along the plank.
-      for (let g = 0; g < 46; g += 1) {
-        const gy = y + random() * (h / planks);
-        const amp = 2 + random() * 9;
-        const freq = 0.002 + random() * 0.006;
-        const phase = random() * Math.PI * 2;
-        ctx.strokeStyle = random() > 0.45
-          ? rgba('#3a2312', 0.08 + random() * 0.13)
-          : rgba('#d7a870', 0.05 + random() * 0.07);
-        ctx.lineWidth = 0.8 + random() * 2.2;
-        ctx.beginPath();
-        for (let x = 0; x <= w; x += 10) {
-          const yy = gy + Math.sin(x * freq + phase) * amp;
-          if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
-        }
-        ctx.stroke();
-      }
-
-      // The seam between planks.
-      ctx.fillStyle = rgba('#2b1a0d', 0.5);
-      ctx.fillRect(0, y, w, 2);
-    }
-
-    // A few knots and scuffs so it is not a perfect surface.
-    for (let i = 0; i < 5; i += 1) {
-      const cx = random() * w;
-      const cy = random() * h;
-      const r = 5 + random() * 13;
-      const knot = ctx.createRadialGradient(cx, cy, 1, cx, cy, r);
-      knot.addColorStop(0, rgba('#2e1c0e', 0.75));
-      knot.addColorStop(1, rgba('#2e1c0e', 0));
-      ctx.fillStyle = knot;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }, { repeat: [1, 1] });
-}
-
-/** Skatepark plywood: pale sheet with a printed grain and worn edges. */
-export function createRampTexture() {
+/** Birch ply: pale, with a fine straight grain and the odd darker streak. */
+function createPlywoodTexture() {
   return canvasTexture(512, 512, (ctx, w, h) => {
-    const base = '#b18a58';
+    const base = '#d7b98b';
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, w, h);
     const random = rng(9);
-    for (let i = 0; i < 200; i += 1) {
-      ctx.strokeStyle = rgba('#5a3a18', 0.09 + random() * 0.16);
-      ctx.lineWidth = 0.6 + random() * 2;
+    for (let i = 0; i < 260; i += 1) {
+      ctx.strokeStyle = random() > 0.8
+        ? rgba('#8b6236', 0.12 + random() * 0.14)
+        : rgba('#a27a4a', 0.06 + random() * 0.1);
+      ctx.lineWidth = 0.5 + random() * 1.8;
       const y = random() * h;
+      const wave = random() * 3;
       ctx.beginPath();
-      for (let x = 0; x <= w; x += 12) {
-        ctx.lineTo(x, y + Math.sin(x * 0.01 + random()) * 4);
-      }
+      for (let x = 0; x <= w; x += 16) ctx.lineTo(x, y + Math.sin(x * 0.012 + wave) * 2.5);
       ctx.stroke();
     }
-    // Wheel scuffs down the middle of the transition.
-    ctx.fillStyle = rgba('#4a3620', 0.2);
-    ctx.fillRect(0, h * 0.42, w, h * 0.16);
-    // ExtrudeGeometry emits UVs in world units, so one tile every ~14 units.
-  }, { repeat: [0.07, 0.07] });
+    // Wheel wear down the middle of the riding surface.
+    const wear = ctx.createLinearGradient(0, 0, 0, h);
+    wear.addColorStop(0, rgba('#5a4026', 0));
+    wear.addColorStop(0.5, rgba('#5a4026', 0.1));
+    wear.addColorStop(1, rgba('#5a4026', 0));
+    ctx.fillStyle = wear;
+    ctx.fillRect(0, 0, w, h);
+  }, { repeat: [1 / 16, 1 / 16] });
 }
 
-/** Poured concrete for ledges, with aggregate speckle. */
-export function createConcreteTexture() {
+/** Cast concrete-look resin, as fingerboard ledges and pads are sold. */
+function createConcreteTexture() {
   return canvasTexture(512, 512, (ctx, w, h) => {
-    ctx.fillStyle = '#9b9a95';
+    ctx.fillStyle = '#a8a7a2';
     ctx.fillRect(0, 0, w, h);
     const random = rng(23);
     for (let i = 0; i < 9000; i += 1) {
       const v = random();
-      ctx.fillStyle = v > 0.5 ? rgba('#ffffff', 0.09 * v) : rgba('#3d3c39', 0.18 * v);
+      ctx.fillStyle = v > 0.5 ? rgba('#ffffff', 0.08 * v) : rgba('#3d3c39', 0.16 * v);
       ctx.fillRect(random() * w, random() * h, 1 + random() * 2.4, 1 + random() * 2.4);
     }
-    for (let i = 0; i < 26; i += 1) {
-      ctx.strokeStyle = rgba('#5a5955', 0.16);
+    for (let i = 0; i < 18; i += 1) {
+      ctx.strokeStyle = rgba('#5a5955', 0.14);
       ctx.lineWidth = 0.8;
       ctx.beginPath();
       ctx.moveTo(random() * w, random() * h);
       ctx.lineTo(random() * w, random() * h);
       ctx.stroke();
     }
-  }, { repeat: [0.08, 0.08] });
+  }, { repeat: [1 / 14, 1 / 14] });
+}
+
+/** Black-painted ledge, the paint rubbed through where it has been waxed. */
+function createPaintedTexture() {
+  return canvasTexture(256, 256, (ctx, w, h) => {
+    ctx.fillStyle = '#26272b';
+    ctx.fillRect(0, 0, w, h);
+    const random = rng(51);
+    for (let i = 0; i < 120; i += 1) {
+      ctx.fillStyle = rgba('#8a8f99', 0.05 + random() * 0.08);
+      ctx.fillRect(random() * w, random() * h, 6 + random() * 40, 1 + random() * 2);
+    }
+  }, { repeat: [1 / 8, 1 / 8] });
+}
+
+/** A clear plastic ruler: centimetre and millimetre ticks, printed numbers. */
+function createRulerTexture() {
+  const texture = canvasTexture(1024, 64, (ctx, w, h) => {
+    ctx.fillStyle = '#e8f1f4';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#23303a';
+    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const perCm = w / 30;
+    for (let mm = 0; mm <= 300; mm += 1) {
+      const x = (mm / 300) * w;
+      const tall = mm % 10 === 0 ? 22 : mm % 5 === 0 ? 14 : 8;
+      ctx.fillRect(x, 0, 1, tall);
+      if (mm % 10 === 0 && mm > 0 && mm < 300) ctx.fillText(String(mm / 10), x, 38);
+    }
+    ctx.fillStyle = rgba('#23303a', 0.5);
+    ctx.fillText('30 cm', perCm * 26, 56);
+  }, { wrap: false });
+  return texture;
+}
+
+/** A sheet of paper with a pencil sketch of a ramp on it. */
+function createSketchTexture() {
+  return canvasTexture(512, 724, (ctx, w, h) => {
+    ctx.fillStyle = '#f7f5ee';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = rgba('#8fb3d9', 0.5);
+    ctx.lineWidth = 1;
+    for (let y = 60; y < h; y += 26) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = rgba('#3a3a3a', 0.75);
+    ctx.lineWidth = 2.2;
+    // A quarter pipe, side on, with dimensions.
+    ctx.beginPath();
+    ctx.moveTo(80, 420);
+    ctx.lineTo(300, 420);
+    ctx.quadraticCurveTo(420, 420, 420, 250);
+    ctx.lineTo(470, 250);
+    ctx.lineTo(470, 420);
+    ctx.lineTo(420, 420);
+    ctx.stroke();
+    ctx.font = 'italic 22px "Comic Sans MS", "Chalkboard SE", cursive';
+    ctx.fillStyle = rgba('#3a3a3a', 0.85);
+    ctx.fillText('QP — 90mm tall', 90, 200);
+    ctx.fillText('r = 140', 250, 330);
+    ctx.fillText('coping: 6mm steel rod', 90, 520);
+    ctx.fillText('x2 !!', 90, 560);
+  }, { wrap: false });
+}
+
+/* ------------------------------------------------------------ materials */
+
+export function createKitMaterials() {
+  const textures = {
+    plywood: createPlywoodTexture(),
+    concrete: createConcreteTexture(),
+    painted: createPaintedTexture(),
+    ruler: createRulerTexture(),
+    sketch: createSketchTexture(),
+  };
+  const standard = (options) => new THREE.MeshStandardMaterial({ roughness: 0.6, ...options });
+  const materials = {
+    plywood: standard({ map: textures.plywood, roughness: 0.62 }),
+    plySide: standard({ map: textures.plywood, color: '#c9a77a', roughness: 0.7 }),
+    concrete: standard({ map: textures.concrete, roughness: 0.88 }),
+    painted: standard({ map: textures.painted, roughness: 0.55 }),
+    steel: standard({ color: '#c3c9d2', roughness: 0.25, metalness: 0.95 }),
+    screw: standard({ color: '#6f747c', roughness: 0.4, metalness: 0.9 }),
+    railBlack: standard({ color: '#1f2226', roughness: 0.42, metalness: 0.5 }),
+    railRed: standard({ color: '#c8352b', roughness: 0.4, metalness: 0.35 }),
+    aluminium: standard({ color: '#b9bcc2', roughness: 0.35, metalness: 0.85 }),
+    aluminiumDark: standard({ color: '#8e9299', roughness: 0.4, metalness: 0.8 }),
+    logo: standard({ color: '#eef1f5', roughness: 0.2, metalness: 0.6 }),
+    pages: standard({ color: '#efe6cf', roughness: 0.9 }),
+    bookRed: standard({ color: '#8f2a2a', roughness: 0.75 }),
+    bookNavy: standard({ color: '#1f3354', roughness: 0.75 }),
+    bookGreen: standard({ color: '#2f5a3f', roughness: 0.75 }),
+    gold: standard({ color: '#c9a44c', roughness: 0.35, metalness: 0.8 }),
+    eraser: standard({ color: '#f09aa0', roughness: 0.85 }),
+    ruler: new THREE.MeshStandardMaterial({
+      map: textures.ruler, roughness: 0.18, metalness: 0, transparent: true, opacity: 0.88,
+    }),
+    phone: standard({ color: '#16181c', roughness: 0.3, metalness: 0.4 }),
+    lens: standard({ color: '#0a0b0d', roughness: 0.05, metalness: 0.6 }),
+    ceramic: standard({ color: '#f1efe9', roughness: 0.25 }),
+    ceramicBlue: standard({ color: '#3f6fb0', roughness: 0.3 }),
+    coffee: standard({ color: '#2a1509', roughness: 0.15 }),
+    potMetal: standard({ color: '#3c3f45', roughness: 0.45, metalness: 0.6 }),
+    pencil: standard({ color: '#e6b422', roughness: 0.45 }),
+    pencilBlue: standard({ color: '#2f6fd1', roughness: 0.45 }),
+    pencilGreen: standard({ color: '#3a9d52', roughness: 0.45 }),
+    pencilWood: standard({ color: '#d9b183', roughness: 0.7 }),
+    graphite: standard({ color: '#2b2b30', roughness: 0.5 }),
+    lamp: standard({ color: '#1d1f23', roughness: 0.45, metalness: 0.55 }),
+    lampInside: new THREE.MeshStandardMaterial({ color: '#fff4dc', emissive: '#ffe2a8', emissiveIntensity: 1.2, roughness: 0.6 }),
+    bulb: new THREE.MeshBasicMaterial({ color: '#fff6e0' }),
+    paper: standard({ map: textures.sketch, roughness: 0.95 }),
+    sticky: standard({ color: '#f7e36b', roughness: 0.9 }),
+    stickyPink: standard({ color: '#f6a3c4', roughness: 0.9 }),
+    coin: standard({ color: '#b9a06a', roughness: 0.3, metalness: 0.9 }),
+    toolHandle: standard({ color: '#e04d2c', roughness: 0.5 }),
+  };
+  return { materials, textures };
 }
 
 /* ------------------------------------------------------------ obstacles */
 
 /**
  * Extrude a side profile (u along the obstacle, height up) across its width.
+ * The two flat ends — the obstacle's sides — get `sideMaterial`; the
+ * surfaces the profile sweeps out get `surfaceMaterial`.
  *
  * No bevel: ExtrudeGeometry's bevel grows the outline outward, which would
  * lift every riding surface above where the physics has the wheels.
  */
-function extrudeProfile(points, width, material) {
+function extrudeProfile(points, width, surfaceMaterial, sideMaterial = surfaceMaterial) {
   const shape = new THREE.Shape();
   shape.moveTo(points[0][0], points[0][1]);
   for (const [x, y] of points.slice(1)) shape.lineTo(x, y);
   shape.closePath();
-
   const geometry = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
   geometry.translate(0, 0, -width / 2);
-  const mesh = new THREE.Mesh(worldUV(geometry), material);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-/**
- * UVs in world units, projected along each face's normal, so a texture's
- * grain is the same size on a kicker, a ledge and a quarter pipe. (The
- * geometry's own UVs stretch 0..1 over every face whatever its size.)
- */
-function worldUV(geometry) {
-  const position = geometry.attributes.position;
-  const normal = geometry.attributes.normal;
-  const uv = geometry.attributes.uv;
-  for (let i = 0; i < position.count; i += 1) {
-    const nx = Math.abs(normal.getX(i));
-    const ny = Math.abs(normal.getY(i));
-    const nz = Math.abs(normal.getZ(i));
-    const x = position.getX(i);
-    const y = position.getY(i);
-    const z = position.getZ(i);
-    if (nz >= nx && nz >= ny) uv.setXY(i, x, y);
-    else if (nx >= ny) uv.setXY(i, z, y);
-    else uv.setXY(i, x, z);
-  }
-  uv.needsUpdate = true;
-  return geometry;
-}
-
-function box(width, height, depth, material) {
-  const mesh = new THREE.Mesh(worldUV(new THREE.BoxGeometry(width, height, depth)), material);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
+  return new THREE.Mesh(worldUV(geometry), [sideMaterial, surfaceMaterial]);
 }
 
 /** Steel angle along a grindable top edge, flush with the faces it caps. */
 function edging(length, height, material) {
   const size = 0.36;
-  const strip = box(length + 0.02, size, size, material);
+  const strip = mesh(new THREE.BoxGeometry(length + 0.02, size, size), material);
   strip.position.y = height - size / 2 + 0.01;
   return strip;
 }
 
-/**
- * The mesh for one park obstacle, in its own local frame: x along the
- * obstacle (the physics' u) and z across it (w). Every surface is sampled
- * from the profile functions the physics uses, so nothing drawn here can
- * disagree with what the board rides on.
- */
-function buildItem(item, materials) {
-  const group = new THREE.Group();
-  const surface = materials[item.material] ?? materials.ramp;
+function screw(material, x, y, z) {
+  return mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 8), material, x, y + 0.02, z);
+}
 
-  switch (item.kind) {
-    case 'box': {
-      const block = box(item.len, item.height, item.wid, surface);
-      block.position.y = item.height / 2;
-      group.add(block);
+const BOX_LOOKS = {
+  plywood: (m) => ({ top: m.plywood, side: m.plySide, edge: m.steel }),
+  concrete: (m) => ({ top: m.concrete, side: m.concrete, edge: m.steel }),
+  painted: (m) => ({ top: m.painted, side: m.painted, edge: m.steel }),
+};
+
+/** A box obstacle: plain material boxes, or one of the household things. */
+function buildBox(item, m) {
+  const group = new THREE.Group();
+  const { len, wid, height } = item;
+
+  switch (item.look) {
+    case 'laptop': {
+      group.add(block(len, height / 2, wid, m.aluminiumDark));
+      group.add(block(len - 0.1, height / 2, wid - 0.1, m.aluminium, 0, height / 2, 0));
+      // Hinge along the back and a logo on the lid.
+      group.add(mesh(new THREE.CylinderGeometry(0.35, 0.35, len * 0.8, 10).rotateZ(Math.PI / 2), m.aluminiumDark, 0, height / 2, -wid / 2 + 0.35));
+      group.add(mesh(new THREE.CircleGeometry(1.4, 24).rotateX(-Math.PI / 2), m.logo, 0, height + 0.01, 0));
+      break;
+    }
+    case 'books': {
+      // Three hardbacks, each a cover wrapped round a slightly smaller block
+      // of pages, kept inside the physics footprint.
+      const covers = [m.bookNavy, m.bookRed, m.bookGreen];
+      const each = height / 3;
+      covers.forEach((cover, i) => {
+        const y = i * each;
+        const shrink = i * 0.35;
+        const l = len - shrink;
+        const w = wid - shrink;
+        group.add(block(l, 0.2, w, cover, 0, y, 0));
+        group.add(block(l, 0.2, w, cover, 0, y + each - 0.2, 0));
+        group.add(block(0.3, each, w, cover, -l / 2 + 0.15, y, 0)); // spine
+        group.add(block(l - 0.6, each - 0.4, w - 0.5, m.pages, 0.15, y + 0.2, 0));
+        group.add(block(0.32, 0.25, w * 0.6, m.gold, -l / 2 + 0.15, y + each * 0.5, 0));
+      });
+      break;
+    }
+    case 'ruler': {
+      // A 300mm ruler bridged across two erasers.
+      const eraserLength = 4.4;
+      for (const side of [-1, 1]) {
+        group.add(block(eraserLength, height - 0.4, wid, m.eraser, side * (len / 2 - eraserLength / 2), 0, 0));
+      }
+      const ruler = new THREE.Mesh(new THREE.BoxGeometry(len, 0.4, wid), m.ruler);
+      ruler.position.y = height - 0.2;
+      group.add(ruler);
+      break;
+    }
+    case 'phone': {
+      group.add(block(len, height, wid, m.phone));
+      // Face down, so the camera bump is on top.
+      group.add(block(3.2, 0.12, 3.2, m.phone, -len / 2 + 2.4, height, -wid / 2 + 2.2));
+      group.add(mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.06, 16), m.lens, -len / 2 + 1.7, height + 0.14, -wid / 2 + 1.6));
+      break;
+    }
+    default: {
+      const look = (BOX_LOOKS[item.look] ?? BOX_LOOKS.concrete)(m);
+      const geometry = worldUV(new THREE.BoxGeometry(len, height, wid));
+      // BoxGeometry face order: +x, -x, +y, -y, +z, -z.
+      const faces = [look.side, look.side, look.top, look.side, look.side, look.side];
+      group.add(mesh(geometry, faces, 0, height / 2, 0));
       for (const edge of item.grind ?? []) {
         const sign = edge[1] === '+' ? 1 : -1;
         const along = edge[0] === 'w';
-        const strip = edging(along ? item.len : item.wid, item.height, materials.metal);
-        if (along) strip.position.z = sign * (item.wid / 2 - 0.17);
+        const strip = edging(along ? len : wid, height, look.edge);
+        if (along) strip.position.z = sign * (wid / 2 - 0.17);
         else {
           strip.rotation.y = Math.PI / 2;
-          strip.position.x = sign * (item.len / 2 - 0.17);
+          strip.position.x = sign * (len / 2 - 0.17);
         }
         group.add(strip);
       }
       break;
     }
-
-    case 'wedge': {
-      const points = [[-item.len / 2, 0]];
-      const steps = item.curve && item.curve !== 1 ? 24 : 1;
-      for (let i = 0; i <= steps; i += 1) {
-        const u = -item.len / 2 + (i / steps) * item.len;
-        points.push([u, wedgeProfile(item, u)]);
-      }
-      points.push([item.len / 2, 0]);
-      group.add(extrudeProfile(points, item.wid, surface));
-      break;
-    }
-
-    case 'quarter': {
-      const run = quarterRun(item);
-      const points = [[0, 0]];
-      for (let i = 1; i <= 40; i += 1) {
-        const u = (i / 40) * run;
-        points.push([u, quarterProfile(item, u)]);
-      }
-      points.push([run + item.deck, item.height], [run + item.deck, 0]);
-      group.add(extrudeProfile(points, item.wid, materials.ramp));
-
-      // Steel coping along the lip, sunk so its top is flush with the deck:
-      // centred on the lip it would stand proud of where the wheels ride.
-      const radius = 0.34;
-      const coping = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius, radius, item.wid, 14),
-        materials.metal,
-      );
-      coping.rotation.x = Math.PI / 2;
-      coping.position.set(run - radius * 0.4, item.height - radius + 0.02, 0);
-      coping.castShadow = true;
-      group.add(coping);
-      break;
-    }
-
-    case 'stairs': {
-      const points = [[0, 0]];
-      for (let step = 0; step < item.drops - 1; step += 1) {
-        const h = stairsProfile(item, step * item.tread);
-        points.push([step * item.tread, h], [(step + 1) * item.tread, h]);
-      }
-      points.push([(item.drops - 1) * item.tread, 0]);
-      group.add(extrudeProfile(points, item.wid, surface));
-      break;
-    }
-
-    default:
-      break;
   }
+  return group;
+}
 
-  group.position.set(item.x, 0, item.z);
-  group.rotation.y = -(item.rot ?? 0);
+function buildWedge(item, m) {
+  const points = [[-item.len / 2, 0]];
+  const steps = item.curve && item.curve !== 1 ? 24 : 1;
+  for (let i = 0; i <= steps; i += 1) {
+    const u = -item.len / 2 + (i / steps) * item.len;
+    points.push([u, wedgeProfile(item, u)]);
+  }
+  points.push([item.len / 2, 0]);
+  const group = new THREE.Group();
+  group.add(extrudeProfile(points, item.wid, m.plywood, m.plySide));
+  // A steel plate where the ramp meets the table, as on a real kicker.
+  group.add(block(0.9, 0.05, item.wid, m.steel, -item.len / 2 + 0.45, 0, 0));
+  return group;
+}
+
+/** A quarter pipe as a row of separate modules, pushed together. */
+function buildQuarter(item, m) {
+  const group = new THREE.Group();
+  const run = quarterRun(item);
+  const points = [[0, 0]];
+  for (let i = 1; i <= 40; i += 1) {
+    const u = (i / 40) * run;
+    points.push([u, quarterProfile(item, u)]);
+  }
+  points.push([run + item.deck, item.height], [run + item.deck, 0]);
+
+  const modules = item.modules ?? 1;
+  const width = item.wid / modules;
+  const radius = 0.34;
+  for (let k = 0; k < modules; k += 1) {
+    const w = -item.wid / 2 + width * (k + 0.5);
+    // A hair narrower than its slot, so the seams between modules show.
+    const module = extrudeProfile(points, width - 0.12, m.plywood, m.plySide);
+    module.position.z = w;
+    group.add(module);
+
+    // Steel coping, sunk so its top is flush with the deck.
+    const coping = mesh(
+      new THREE.CylinderGeometry(radius, radius, width - 0.3, 12).rotateX(Math.PI / 2),
+      m.steel,
+      run - radius * 0.4,
+      item.height - radius + 0.02,
+      w,
+    );
+    group.add(coping);
+    // Deck screws, two rows.
+    for (const du of [run + 1.4, run + item.deck - 1.2]) {
+      for (const dw of [-0.32, 0, 0.32]) group.add(screw(m.screw, du, item.height, w + dw * width));
+    }
+    // And along the bottom plate where the ramp meets the table.
+    group.add(block(1.2, 0.05, width - 0.3, m.steel, 0.6, 0, w));
+  }
+  return group;
+}
+
+function buildStairs(item, m) {
+  const points = [[0, 0]];
+  for (let step = 0; step < item.drops - 1; step += 1) {
+    const h = stairsProfile(item, step * item.tread);
+    points.push([step * item.tread, h], [(step + 1) * item.tread, h]);
+  }
+  points.push([(item.drops - 1) * item.tread, 0]);
+  const group = new THREE.Group();
+  group.add(extrudeProfile(points, item.wid, m.concrete));
+  // Steel nosing on each step edge.
+  for (let step = 0; step < item.drops - 1; step += 1) {
+    const h = stairsProfile(item, step * item.tread);
+    group.add(mesh(new THREE.BoxGeometry(0.3, 0.3, item.wid), m.steel, step * item.tread + 0.15, h - 0.15, 0));
+  }
   return group;
 }
 
 /**
- * A round bar from a to b ([x, z, topY] each), on posts. The given heights are
- * the *top* of the bar — the surface you grind — so the bar's centre is one
- * radius below. Posts and feet stay inside the bar's footprint, where the
- * physics already has the rail as solid.
+ * A round bar from a to b ([x, z, topY] each), on posts with base plates.
+ * The heights given are the *top* of the bar — the surface you grind — so the
+ * bar's centre is one radius below. Posts and plates stay inside the bar's
+ * footprint, where the physics already has the rail as solid.
  */
-function buildRail(rail, materials) {
+function buildRail(rail, m) {
+  const material = rail.look === 'red' ? m.railRed : m.railBlack;
   const group = new THREE.Group();
   const a = new THREE.Vector3(rail.a[0], rail.a[2] - RAIL_RADIUS, rail.a[1]);
   const b = new THREE.Vector3(rail.b[0], rail.b[2] - RAIL_RADIUS, rail.b[1]);
   const length = a.distanceTo(b);
+  const direction = b.clone().sub(a).normalize();
 
-  const bar = new THREE.Mesh(new THREE.CylinderGeometry(RAIL_RADIUS, RAIL_RADIUS, length, 18), materials.metal);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(RAIL_RADIUS, RAIL_RADIUS, length, 16), material);
   bar.position.copy(a).add(b).multiplyScalar(0.5);
-  bar.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-  bar.castShadow = true;
+  bar.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
   group.add(bar);
 
+  const heading = Math.atan2(direction.z, direction.x);
   const posts = Math.max(2, Math.round(length / 14) + 1);
   for (let i = 0; i < posts; i += 1) {
-    const t = 0.03 + (0.94 * i) / (posts - 1);
+    const t = 0.04 + (0.92 * i) / (posts - 1);
     const top = a.clone().lerp(b, t);
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, top.y, 10), materials.metal);
-    post.position.set(top.x, top.y / 2, top.z);
-    post.castShadow = true;
-    group.add(post);
-    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.16, 14), materials.metal);
-    foot.position.set(top.x, 0.08, top.z);
-    foot.receiveShadow = true;
-    group.add(foot);
+    group.add(mesh(new THREE.BoxGeometry(0.5, top.y, 0.5), material, top.x, top.y / 2, top.z));
+    const plate = mesh(new THREE.BoxGeometry(2.4, 0.2, 0.9), material, top.x, 0.1, top.z);
+    plate.rotation.y = -heading;
+    group.add(plate);
   }
   return group;
 }
 
-/** Every obstacle in the park, built once. */
+/** Round things standing on the table. */
+function buildCylinder(item, m) {
+  const group = new THREE.Group();
+  const r = item.radius;
+  const h = item.height;
+  switch (item.look) {
+    case 'mug': {
+      const body = new THREE.CylinderGeometry(r - 0.1, r - 0.35, h, 28, 1, true);
+      group.add(mesh(body, m.ceramicBlue, 0, h / 2, 0));
+      const inside = new THREE.CylinderGeometry(r - 0.35, r - 0.55, h - 0.3, 28, 1, true);
+      const insideMesh = mesh(inside, m.ceramic, 0, h / 2 + 0.15, 0);
+      insideMesh.material = m.ceramic;
+      group.add(insideMesh);
+      group.add(mesh(new THREE.CylinderGeometry(r - 0.35, r - 0.35, 0.4, 28), m.ceramicBlue, 0, 0.2, 0));
+      group.add(mesh(new THREE.CircleGeometry(r - 0.4, 28).rotateX(-Math.PI / 2), m.coffee, 0, h - 1.8, 0));
+      group.add(mesh(new THREE.TorusGeometry(2.3, 0.55, 10, 20, Math.PI * 1.1).rotateZ(-Math.PI / 2 - 0.05), m.ceramicBlue, r + 0.9, h * 0.55, 0));
+      break;
+    }
+    case 'pencils': {
+      group.add(mesh(new THREE.CylinderGeometry(r, r, h, 24, 1, true), m.potMetal, 0, h / 2, 0));
+      group.add(mesh(new THREE.CylinderGeometry(r, r, 0.3, 24), m.potMetal, 0, 0.15, 0));
+      const random = rng(4);
+      const colours = [m.pencil, m.pencilBlue, m.pencilGreen, m.pencil, m.pencilBlue];
+      colours.forEach((material, i) => {
+        const angle = (i / colours.length) * Math.PI * 2;
+        const lean = 0.12 + random() * 0.12;
+        const length = 16 + random() * 2;
+        const pencil = new THREE.Group();
+        pencil.add(mesh(new THREE.CylinderGeometry(0.38, 0.38, length, 6), material, 0, length / 2, 0));
+        pencil.add(mesh(new THREE.ConeGeometry(0.38, 1.4, 6), m.pencilWood, 0, length + 0.7, 0));
+        pencil.add(mesh(new THREE.ConeGeometry(0.12, 0.45, 6), m.graphite, 0, length + 1.25, 0));
+        pencil.position.set(Math.cos(angle) * 1.6, 0.4, Math.sin(angle) * 1.6);
+        pencil.rotation.set(Math.sin(angle) * lean, 0, -Math.cos(angle) * lean);
+        group.add(pencil);
+      });
+      break;
+    }
+    case 'lampBase': {
+      group.add(mesh(new THREE.CylinderGeometry(r - 0.4, r, h, 32), m.lamp, 0, h / 2, 0));
+      break;
+    }
+    case 'lampStem': {
+      // Stem, an elbow, an arm leaning out over the table, and the shade.
+      group.add(mesh(new THREE.CylinderGeometry(r * 0.7, r, h, 12), m.lamp, 0, h / 2, 0));
+      group.add(mesh(new THREE.SphereGeometry(1.4, 12, 10), m.lamp, 0, h, 0));
+      const elbow = new THREE.Vector3(0, h, 0);
+      const head = new THREE.Vector3(24, h + 8, -14);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, elbow.distanceTo(head), 10), m.lamp);
+      arm.position.copy(elbow).lerp(head, 0.5);
+      arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), head.clone().sub(elbow).normalize());
+      group.add(arm);
+      const shade = new THREE.Group();
+      shade.add(mesh(new THREE.CylinderGeometry(2, 7.5, 9, 24, 1, true), m.lamp, 0, 0, 0));
+      shade.add(mesh(new THREE.CylinderGeometry(1.95, 7.3, 8.8, 24, 1, true), m.lampInside, 0, -0.05, 0));
+      const bulb = mesh(new THREE.SphereGeometry(2.2, 14, 10), m.bulb, 0, -2.5, 0);
+      shade.add(bulb);
+      shade.position.copy(head);
+      shade.rotation.z = -0.5;
+      shade.rotation.x = 0.3;
+      group.add(shade);
+      group.userData.lampHead = head.clone().add(new THREE.Vector3(0, -3, 0));
+      break;
+    }
+    default:
+      group.add(mesh(new THREE.CylinderGeometry(r, r, h, 24), m.concrete, 0, h / 2, 0));
+  }
+  return group;
+}
+
+/**
+ * Every obstacle and object in the park, built once. Returns the group and
+ * where the desk lamp's bulb is, for the light.
+ */
 export function buildPark(park, materials) {
   const group = new THREE.Group();
+  let lampHead = null;
   for (const item of park.items) {
-    group.add(item.kind === 'rail' ? buildRail(item, materials) : buildItem(item, materials));
+    let object;
+    switch (item.kind) {
+      case 'rail':
+        group.add(buildRail(item, materials));
+        continue;
+      case 'box':
+        object = buildBox(item, materials);
+        break;
+      case 'wedge':
+        object = buildWedge(item, materials);
+        break;
+      case 'quarter':
+        object = buildQuarter(item, materials);
+        break;
+      case 'stairs':
+        object = buildStairs(item, materials);
+        break;
+      case 'cylinder':
+        object = buildCylinder(item, materials);
+        if (object.userData.lampHead) lampHead = object.userData.lampHead.clone().add(new THREE.Vector3(item.x, 0, item.z));
+        break;
+      default:
+        continue;
+    }
+    object.position.set(item.x, 0, item.z);
+    object.rotation.y = -(item.rot ?? 0);
+    group.add(object);
   }
-  return group;
+  return { group, lampHead };
 }
-
-/* ------------------------------------------------------ base and desk */
 
 /**
- * The park's base board and the desk under it. The base board is the top of
- * the physics' world (y = 0); the desk is a step down all round it.
+ * Flat things lying on the table: a sketch of the next ramp, sticky notes,
+ * some change, the little screwdriver that comes with a fingerboard. They
+ * sit in corners away from the lines, and are too thin to ride into.
  */
-export function buildGround(materials, deskTexture) {
-  // (deskTexture is materials.desk.map; its tiling is set here with the desk.)
+export function buildTableClutter(m) {
   const group = new THREE.Group();
-
-  const baseThickness = -DESK.y;
-  const base = box(TABLE.halfX * 2, baseThickness, TABLE.halfZ * 2, materials.base);
-  base.position.y = -baseThickness / 2;
-  group.add(base);
-
-  const deskThickness = 4;
-  const deskGeometry = worldUV(new THREE.BoxGeometry(DESK.halfX * 2, deskThickness, DESK.halfZ * 2));
-  const desk = new THREE.Mesh(deskGeometry, [
-    materials.deskEdge, materials.deskEdge, materials.desk,
-    materials.deskEdge, materials.deskEdge, materials.deskEdge,
-  ]);
-  desk.position.y = DESK.y - deskThickness / 2;
-  desk.receiveShadow = true;
-  deskTexture.repeat.set(1 / 110, 1 / 110);
-  group.add(desk);
-
-  // Legs down to the floor, and the floor, for anyone who rides off the edge.
-  const legHeight = DESK.y - deskThickness - FLOOR_Y;
-  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const leg = box(6, legHeight, 6, materials.deskEdge);
-    leg.position.set(sx * (DESK.halfX - 8), FLOOR_Y + legHeight / 2, sz * (DESK.halfZ - 8));
-    group.add(leg);
-  }
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), materials.floor);
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = FLOOR_Y;
-  floor.receiveShadow = true;
-  group.add(floor);
-
-  return group;
-}
-
-/** Painted board for the park base: dark, even, with faint panel seams. */
-export function createBaseTexture() {
-  return canvasTexture(1024, 1024, (ctx, w, h) => {
-    ctx.fillStyle = '#4d5560';
-    ctx.fillRect(0, 0, w, h);
-    const random = rng(71);
-    for (let i = 0; i < 14000; i += 1) {
-      const v = random();
-      ctx.fillStyle = v > 0.5 ? rgba('#ffffff', 0.05 * v) : rgba('#1c2027', 0.1 * v);
-      ctx.fillRect(random() * w, random() * h, 1 + random() * 2, 1 + random() * 2);
-    }
-    // Wheel scuffs.
-    for (let i = 0; i < 40; i += 1) {
-      ctx.strokeStyle = rgba('#20242b', 0.08 + random() * 0.08);
-      ctx.lineWidth = 2 + random() * 3;
-      ctx.beginPath();
-      const x = random() * w;
-      const y = random() * h;
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + (random() - 0.5) * 300, y + (random() - 0.5) * 300, x + (random() - 0.5) * 500, y + (random() - 0.5) * 500);
-      ctx.stroke();
-    }
-    // Panel seams: one tile of texture is one 400mm panel.
-    ctx.fillStyle = rgba('#15181d', 0.55);
-    ctx.fillRect(0, 0, w, 3);
-    ctx.fillRect(0, 0, 3, h);
-  }, { repeat: [1 / 40, 1 / 40] });
-}
-
-/** Floorboards far below, mostly seen when you ride off the desk. */
-export function createFloorTexture() {
-  return canvasTexture(512, 512, (ctx, w, h) => {
-    ctx.fillStyle = '#5a3f28';
-    ctx.fillRect(0, 0, w, h);
-    const random = rng(12);
-    for (let i = 0; i < 8; i += 1) {
-      ctx.fillStyle = shade('#5a3f28', (random() - 0.5) * 0.12);
-      ctx.fillRect(0, (i / 8) * h, w, h / 8 - 3);
-    }
-  }, { repeat: [14, 14] });
-}
-
-/** Clutter on the desk round the park: real sizes, so the board reads as 96mm. */
-export const DESK_LAYOUT = [
-  { prop: 'mug', x: 142, z: -28, rot: 0.6 },
-  { prop: 'can', x: -140, z: 36, rot: 0 },
-  { prop: 'pencil', x: 60, z: 96, rot: 0.2 },
-  { prop: 'pencil', x: 72, z: 100, rot: -0.1 },
-  { prop: 'phone', x: -70, z: -102, rot: 0.15 },
-  { prop: 'notepad', x: 150, z: 70, rot: 0.3 },
-  { prop: 'coins', x: -150, z: -70, rot: 0 },
-  { prop: 'eraser', x: 20, z: -100, rot: 0.8 },
-  { prop: 'mug', x: -120, z: 102, rot: 2.1 },
-  { prop: 'can', x: 128, z: 104, rot: 0 },
-];
-
-export function buildDeskClutter(materials) {
-  const group = new THREE.Group();
-  for (const { prop, x, z, rot } of DESK_LAYOUT) {
-    const item = DESK_PROPS[prop](materials);
-    item.position.set(x, DESK.y, z);
-    item.rotation.y = rot;
-    group.add(item);
-  }
-  return group;
-}
-
-/* --------------------------------------------------------- desk clutter */
-
-/**
- * Household objects at their real sizes. These do the heavy lifting on scale:
- * a 95mm mug standing beside a 96mm board tells you instantly how small it is.
- */
-export const DESK_PROPS = {
-  mug(materials) {
-    const group = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(4.1, 3.6, 9.5, 28, 1, true), materials.ceramic);
-    body.position.y = 4.75;
-    body.castShadow = true;
-    group.add(body);
-
-    const inside = new THREE.Mesh(new THREE.CylinderGeometry(3.85, 3.4, 9.1, 28, 1, true), materials.ceramicDark);
-    inside.position.y = 4.9;
-    inside.material.side = THREE.BackSide;
-    group.add(inside);
-
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 0.5, 28), materials.ceramic);
-    base.position.y = 0.25;
-    base.castShadow = true;
-    group.add(base);
-
-    const coffee = new THREE.Mesh(new THREE.CircleGeometry(3.8, 28), materials.coffee);
-    coffee.rotation.x = -Math.PI / 2;
-    coffee.position.y = 7.6;
-    group.add(coffee);
-
-    const handle = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.55, 12, 24, Math.PI * 1.1), materials.ceramic);
-    handle.position.set(4.0, 5.2, 0);
-    handle.rotation.z = -0.35;
-    handle.castShadow = true;
-    group.add(handle);
-    return group;
-  },
-
-  pencil(materials) {
-    const group = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 15, 6), materials.pencil);
-    body.rotation.z = Math.PI / 2;
-    body.position.set(0, 0.38, 0);
-    body.castShadow = true;
-    group.add(body);
-
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.38, 1.6, 6), materials.wood);
-    cone.rotation.z = -Math.PI / 2;
-    cone.position.set(8.3, 0.38, 0);
-    cone.castShadow = true;
-    group.add(cone);
-
-    const lead = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.5, 6), materials.graphite);
-    lead.rotation.z = -Math.PI / 2;
-    lead.position.set(9.3, 0.38, 0);
-    group.add(lead);
-
-    const ferrule = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.2, 12), materials.metal);
-    ferrule.rotation.z = Math.PI / 2;
-    ferrule.position.set(-8.1, 0.38, 0);
-    group.add(ferrule);
-
-    const eraser = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.9, 12), materials.eraser);
-    eraser.rotation.z = Math.PI / 2;
-    eraser.position.set(-9.1, 0.38, 0);
-    group.add(eraser);
-    return group;
-  },
-
-  can(materials) {
-    const group = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(3.3, 3.3, 10.6, 26), materials.canBody);
-    body.position.y = 5.9;
-    body.castShadow = true;
-    group.add(body);
-    for (const [y, r] of [[0.4, 2.9], [11.6, 2.9]]) {
-      const rim = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.8, 26), materials.metal);
-      rim.position.y = y;
-      rim.castShadow = true;
-      group.add(rim);
-    }
-    const taperTop = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.3, 1, 26), materials.canBody);
-    taperTop.position.y = 11.0;
-    group.add(taperTop);
-    return group;
-  },
-
-  phone(materials) {
-    const group = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(14.6, 0.8, 7.1), materials.phone);
-    body.position.y = 0.4;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    group.add(body);
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(13.6, 6.3), materials.screen);
-    screen.rotation.x = -Math.PI / 2;
-    screen.position.y = 0.81;
-    group.add(screen);
-    return group;
-  },
-
-  coins(materials) {
-    const group = new THREE.Group();
-    const random = rng(5);
-    for (let i = 0; i < 3; i += 1) {
-      const coin = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.2, 22), materials.coin);
-      coin.position.set((random() - 0.5) * 5, 0.1 + i * 0.02, (random() - 0.5) * 4);
-      coin.castShadow = true;
-      group.add(coin);
-    }
-    return group;
-  },
-
-  eraser(materials) {
-    const group = new THREE.Group();
-    const block = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.2, 2.1), materials.eraser);
-    block.position.y = 0.6;
-    block.castShadow = true;
-    group.add(block);
-    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.24, 2.14), materials.sleeve);
-    sleeve.position.y = 0.6;
-    block.add(sleeve);
-    return group;
-  },
-
-  notepad(materials) {
-    const group = new THREE.Group();
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(9, 0.9, 9), materials.paper);
-    pad.position.y = 0.45;
-    pad.castShadow = true;
-    pad.receiveShadow = true;
-    group.add(pad);
-    return group;
-  },
-};
-
-export const DESK_PROP_NAMES = Object.keys(DESK_PROPS);
-
-/** Materials for the clutter, all flat colours — no maps needed at this size. */
-export function createPropMaterials() {
-  const standard = (color, options = {}) =>
-    new THREE.MeshStandardMaterial({ color, roughness: 0.6, ...options });
-
-  return {
-    ceramic: standard('#eceff3', { roughness: 0.28 }),
-    ceramicDark: standard('#cdd2d8', { roughness: 0.4 }),
-    coffee: standard('#2a1509', { roughness: 0.22, metalness: 0.05 }),
-    pencil: standard('#e6b422', { roughness: 0.45 }),
-    wood: standard('#d9b183', { roughness: 0.7 }),
-    graphite: standard('#2b2b30', { roughness: 0.5 }),
-    eraser: standard('#f2c9c4', { roughness: 0.85 }),
-    sleeve: standard('#3a6fd8', { roughness: 0.6 }),
-    canBody: standard('#c2402f', { roughness: 0.3, metalness: 0.5 }),
-    phone: standard('#1b1d22', { roughness: 0.35 }),
-    screen: new THREE.MeshStandardMaterial({ color: '#0c1118', roughness: 0.08, metalness: 0.2 }),
-    coin: standard('#b9a06a', { roughness: 0.3, metalness: 0.9 }),
-    paper: standard('#f5e9a8', { roughness: 0.92 }),
-    metal: standard('#b6bcc4', { roughness: 0.25, metalness: 0.95 }),
+  const flat = (width, depth, material, x, z, rot, y = 0.02) => {
+    const piece = mesh(new THREE.BoxGeometry(width, 0.06, depth), material, x, y, z);
+    piece.rotation.y = rot;
+    group.add(piece);
   };
+  flat(21, 29.7, m.paper, 112, -70, 0.35);
+  flat(7.6, 7.6, m.sticky, -104, -80, 0.2, 0.05);
+  flat(7.6, 7.6, m.stickyPink, -95, -76, -0.3, 0.06);
+  flat(7.6, 7.6, m.sticky, 122, 64, 0.5, 0.05);
+  const random = rng(8);
+  for (let i = 0; i < 4; i += 1) {
+    const coin = mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.18, 20), m.coin, 42 + random() * 8, 0.09 + i * 0.01, 80 + random() * 3);
+    group.add(coin);
+  }
+  // Fingerboard screwdriver: a handle and a short shaft.
+  const tool = new THREE.Group();
+  tool.add(mesh(new THREE.CylinderGeometry(0.55, 0.55, 5, 10).rotateZ(Math.PI / 2), m.toolHandle, 0, 0.55, 0));
+  tool.add(mesh(new THREE.CylinderGeometry(0.16, 0.16, 3.2, 8).rotateZ(Math.PI / 2), m.steel, 4.1, 0.55, 0));
+  tool.position.set(100, 0, -76);
+  tool.rotation.y = 0.8;
+  group.add(tool);
+  return group;
 }
+
+export { TABLE };

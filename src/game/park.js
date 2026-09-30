@@ -11,11 +11,12 @@
  * (cos rot, sin rot) in world x/z.
  */
 
-/** The park's base board, 2.4m x 1.6m; its top is y = 0. */
-export const TABLE = { halfX: 120, halfZ: 80 };
-/** The desk the park sits on: a step down off the base board, all round. */
-export const DESK = { halfX: 180, halfZ: 125, y: -1.4 };
-/** Past the desk's edge: the floor, 750mm down. */
+/**
+ * The table the park is set up on: a big wooden table, 2.6m x 1.7m, its top
+ * at y = 0. The obstacles sit straight on it. Past its edge is the floor,
+ * 750mm down.
+ */
+export const TABLE = { halfX: 130, halfZ: 85 };
 export const FLOOR_Y = -75;
 export const RAIL_RADIUS = 0.42;
 
@@ -89,6 +90,11 @@ function itemHeight(item, x, z) {
       if (u < 0 || u >= item.tread * (item.drops - 1) || Math.abs(w) > item.wid / 2) return -Infinity;
       return stairsProfile(item, u);
     }
+    case 'cylinder': {
+      const dx = x - item.x;
+      const dz = z - item.z;
+      return dx * dx + dz * dz <= item.radius * item.radius ? item.height : -Infinity;
+    }
     case 'rail': {
       const hit = railParam(item, x, z);
       if (!hit || hit.distance > RAIL_RADIUS + 0.05) return -Infinity;
@@ -119,6 +125,14 @@ function railParam(rail, x, z) {
 
 /** A generous plan-view bounding box, so most queries skip most obstacles. */
 function boundsOf(item) {
+  if (item.kind === 'cylinder') {
+    return {
+      minX: item.x - item.radius,
+      maxX: item.x + item.radius,
+      minZ: item.z - item.radius,
+      maxZ: item.z + item.radius,
+    };
+  }
   if (item.kind === 'rail') {
     const pad = RAIL_RADIUS + 0.1;
     return {
@@ -161,40 +175,52 @@ function boundsOf(item) {
  * 30mm ledges, 45mm funbox, 60mm stair platform.
  */
 export const LAYOUT = [
-  // A low wooden lip round the table, so the edge is a wall rather than a
-  // drop. Its inner top edge is grindable.
-  { kind: 'box', name: 'wall', x: 0, z: -79, rot: 0, len: 240, wid: 2, height: 2.4, grind: ['w+'], material: 'trim' },
-  { kind: 'box', name: 'wall', x: 0, z: 79, rot: 0, len: 240, wid: 2, height: 2.4, grind: ['w-'], material: 'trim' },
-  { kind: 'box', name: 'wall', x: -119, z: 0, rot: 0, len: 2, wid: 156, height: 2.4, material: 'trim' },
-  { kind: 'box', name: 'wall', x: 119, z: 0, rot: 0, len: 2, wid: 156, height: 2.4, material: 'trim' },
+  // Store-bought fingerboard obstacles, set out on the table.
 
-  // Quarter pipes at both ends: back and forth between them is a session.
-  { kind: 'quarter', name: 'quarter pipe', x: -96, z: 0, rot: Math.PI, wid: 110, height: 9, radius: 14, deck: 9 },
-  { kind: 'quarter', name: 'quarter pipe', x: 96, z: 0, rot: 0, wid: 110, height: 9, radius: 14, deck: 9 },
+  // Quarter pipes at both ends — each a row of four 275mm modules pushed
+  // together. Back and forth between them is a session.
+  { kind: 'quarter', name: 'quarter pipe', x: -96, z: 0, rot: Math.PI, wid: 110, height: 9, radius: 14, deck: 9, modules: 4 },
+  { kind: 'quarter', name: 'quarter pipe', x: 96, z: 0, rot: 0, wid: 110, height: 9, radius: 14, deck: 9, modules: 4 },
 
   // Funbox in the middle: a flat top between two banks, ledges down its sides.
-  { kind: 'box', name: 'funbox', x: 0, z: 0, rot: 0, len: 24, wid: 18, height: 4.5, grind: ['w-', 'w+'], material: 'ramp' },
-  { kind: 'wedge', name: 'funbox', x: -19, z: 0, rot: 0, len: 14, wid: 18, height: 4.5, material: 'ramp' },
-  { kind: 'wedge', name: 'funbox', x: 19, z: 0, rot: Math.PI, len: 14, wid: 18, height: 4.5, material: 'ramp' },
+  { kind: 'box', name: 'funbox', x: 0, z: 0, rot: 0, len: 24, wid: 18, height: 4.5, grind: ['w-', 'w+'], look: 'plywood' },
+  { kind: 'wedge', name: 'funbox', x: -19, z: 0, rot: 0, len: 14, wid: 18, height: 4.5, look: 'plywood' },
+  { kind: 'wedge', name: 'funbox', x: 19, z: 0, rot: Math.PI, len: 14, wid: 18, height: 4.5, look: 'plywood' },
 
-  // North side: a long concrete ledge and a flat bar.
-  { kind: 'box', name: 'ledge', x: -38, z: -50, rot: 0, len: 44, wid: 5, height: 3, grind: ['w-', 'w+'], material: 'concrete' },
-  { kind: 'rail', name: 'rail', a: [18, -50, 3.4], b: [66, -50, 3.4] },
+  // North side: a painted ledge and a flat bar.
+  { kind: 'box', name: 'ledge', x: -38, z: -50, rot: 0, len: 44, wid: 5, height: 3, grind: ['w-', 'w+'], look: 'painted' },
+  { kind: 'rail', name: 'rail', a: [18, -50, 3.4], b: [66, -50, 3.4], look: 'black' },
 
   // A manual pad, low enough to ollie onto from flat.
-  { kind: 'box', name: 'manual pad', x: 58, z: -18, rot: 0, len: 22, wid: 12, height: 1.6, grind: ['u-', 'u+', 'w-', 'w+'], material: 'concrete' },
+  { kind: 'box', name: 'manual pad', x: 58, z: -18, rot: 0, len: 22, wid: 12, height: 1.6, grind: ['u-', 'u+', 'w-', 'w+'], look: 'concrete' },
 
-  // Two kickers, pointed at open floor.
-  { kind: 'wedge', name: 'kicker', x: -60, z: 24, rot: 0, len: 10, wid: 12, height: 3.6, curve: 1.6, material: 'ramp' },
-  { kind: 'wedge', name: 'kicker', x: 62, z: 30, rot: Math.PI, len: 10, wid: 12, height: 3.6, curve: 1.6, material: 'ramp' },
+  // Two kickers, pointed at open table.
+  { kind: 'wedge', name: 'kicker', x: -60, z: 24, rot: 0, len: 10, wid: 12, height: 3.6, curve: 1.6, look: 'plywood' },
+  { kind: 'wedge', name: 'kicker', x: 62, z: 30, rot: Math.PI, len: 10, wid: 12, height: 3.6, curve: 1.6, look: 'plywood' },
 
   // South side: a platform with a bank up one side and stairs down the other,
   // with a handrail down one side of the stairs.
-  { kind: 'wedge', name: 'bank', x: -20, z: 58, rot: 0, len: 16, wid: 22, height: 6, material: 'ramp' },
-  { kind: 'box', name: 'platform', x: 2, z: 58, rot: 0, len: 28, wid: 22, height: 6, grind: ['w-'], material: 'concrete' },
-  { kind: 'stairs', name: 'stairs', x: 16, z: 58, rot: 0, wid: 22, height: 6, drops: 3, tread: 4.5, material: 'concrete' },
+  { kind: 'wedge', name: 'bank', x: -20, z: 58, rot: 0, len: 16, wid: 22, height: 6, look: 'plywood' },
+  { kind: 'box', name: 'platform', x: 2, z: 58, rot: 0, len: 28, wid: 22, height: 6, grind: ['w-'], look: 'concrete' },
+  { kind: 'stairs', name: 'stairs', x: 16, z: 58, rot: 0, wid: 22, height: 6, drops: 3, tread: 4.5, look: 'concrete' },
   // Parallel to the step noses (4 down over 9 along), 3 above them.
-  { kind: 'rail', name: 'handrail', a: [14, 64, 9.9], b: [29, 64, 3.2] },
+  { kind: 'rail', name: 'handrail', a: [14, 64, 9.9], b: [29, 64, 3.2], look: 'red' },
+
+  // Whatever else lives on the table — all of it solid, some of it skateable.
+  // A 300mm ruler bridged across two erasers: the classic homemade ledge.
+  { kind: 'box', name: 'ruler', x: -20, z: -70, rot: 0, len: 30, wid: 3, height: 2.2, grind: ['w-', 'w+'], look: 'ruler' },
+  // A closed laptop is a very good manual pad.
+  { kind: 'box', name: 'laptop', x: -64, z: 62, rot: 0.18, len: 32, wid: 22, height: 1.6, grind: ['u-', 'u+', 'w-', 'w+'], look: 'laptop' },
+  // Three hardbacks, stacked: a ledge with a top you can manual across.
+  // (Off to the side, clear of the run-out from the handrail.)
+  { kind: 'box', name: 'books', x: 80, z: 75, rot: -0.1, len: 23, wid: 15, height: 4.2, grind: ['u-', 'u+', 'w-', 'w+'], look: 'books' },
+  // A phone lying face down: a tiny step up.
+  { kind: 'box', name: 'phone', x: 30, z: -72, rot: 0.3, len: 15, wid: 7.2, height: 0.8, look: 'phone' },
+  { kind: 'cylinder', name: 'mug', x: 112, z: 70, radius: 4.2, height: 9.5, look: 'mug' },
+  { kind: 'cylinder', name: 'pencil pot', x: -112, z: -70, radius: 3.8, height: 10, look: 'pencils' },
+  // The desk lamp: a heavy round foot and the stem rising out of it.
+  { kind: 'cylinder', name: 'lamp', x: -114, z: 68, radius: 7, height: 1.3, look: 'lampBase' },
+  { kind: 'cylinder', name: 'lamp', x: -116, z: 70, radius: 0.9, height: 40, look: 'lampStem' },
 ];
 
 /** Collectible letters, each somewhere that takes a trick to reach. */
@@ -260,9 +286,7 @@ export function createPark(layout = LAYOUT) {
 
   /** The solid under (x, z): the tallest thing there, the table, or the floor. */
   function heightAt(x, z) {
-    if (Math.abs(x) > TABLE.halfX || Math.abs(z) > TABLE.halfZ) {
-      return Math.abs(x) > DESK.halfX || Math.abs(z) > DESK.halfZ ? FLOOR_Y : DESK.y;
-    }
+    if (Math.abs(x) > TABLE.halfX || Math.abs(z) > TABLE.halfZ) return FLOOR_Y;
     let top = 0;
     for (const item of items) {
       const b = item.bounds;

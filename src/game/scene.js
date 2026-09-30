@@ -3,37 +3,17 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createFingerboard } from '../lib/fingerboard.js';
 import { createTiltShift } from './tiltshift.js';
 import { createEffects } from './effects.js';
-import { DESK } from './park.js';
-import {
-  createTableTexture,
-  createRampTexture,
-  createConcreteTexture,
-  createBaseTexture,
-  createFloorTexture,
-  createPropMaterials,
-  buildPark,
-  buildGround,
-  buildDeskClutter,
-} from './props.js';
+import { createKitMaterials, buildPark, buildTableClutter } from './props.js';
+import { createRoomMaterials, buildRoom, buildTable } from './room.js';
+import { mergeStatic } from './batch.js';
+import { bakeTableShadows } from './bakedShadows.js';
 
-/** A dim room for the desk to sit in; it reads behind the park. */
-function createRoomBackdrop() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 8;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-  const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-  gradient.addColorStop(0, '#141b26');
-  gradient.addColorStop(0.5, '#243044');
-  gradient.addColorStop(0.78, '#3a3428');
-  gradient.addColorStop(1, '#4a3826');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 8, 256);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.mapping = THREE.EquirectangularReflectionMapping;
-  return texture;
-}
+/**
+ * Where the daylight comes from, relative to what it lights: through the
+ * window behind the far side of the table, high and a little to the left.
+ * The baked table shadows and the board's live shadow both use it.
+ */
+const SUN_OFFSET = new THREE.Vector3(-30, 85, -100);
 
 /** A collectible letter: the glyph drawn on a canvas, in a spinning ring. */
 function createLetter(letter, ringMaterial) {
@@ -75,8 +55,8 @@ const QUALITY_LEVELS = [
   { ratio: 1.5, shadow: 1024, blur: true, shadows: true },
   { ratio: 1.25, shadow: 1024, blur: true, shadows: true },
   { ratio: 1, shadow: 512, blur: true, shadows: true },
-  { ratio: 0.85, shadow: 512, blur: false, shadows: true },
-  { ratio: 0.7, shadow: 512, blur: false, shadows: false },
+  { ratio: 0.85, shadow: 512, blur: false, shadows: true, lamp: false },
+  { ratio: 0.7, shadow: 512, blur: false, shadows: false, lamp: false },
 ];
 
 export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', park }) {
@@ -89,77 +69,78 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   let level = phone ? 2 : 0;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY_LEVELS[level].ratio));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // Counted per frame across every pass (shadow, scene, blur), not per pass.
+  renderer.info.autoReset = false;
+  // Reading back each shader's compile log makes the driver finish compiling
+  // there and then, which stalls the first frames. Only worth it while
+  // developing.
+  renderer.debug.checkShaderErrors = !!import.meta.env?.DEV;
 
   const scene = new THREE.Scene();
-  scene.background = createRoomBackdrop();
+  scene.background = new THREE.Color('#cfe0f2');
 
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 1600);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 2000);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environment = environment;
-  scene.environmentIntensity = 0.5;
+  scene.environmentIntensity = 0.35;
 
   /* ------------------------------------------------------------- lights */
 
-  // Warm key from above, like a desk lamp. Its shadow is what grounds the
-  // board, so the shadow camera follows the board round the park.
-  const key = new THREE.DirectionalLight('#ffe6c4', 3.0);
+  // Daylight through the window. It is the only light that casts a live
+  // shadow, and the only thing that casts into it is the board: the
+  // obstacles' shadows are baked into the table (below), so the shadow map
+  // stays a few hundred triangles however much is on the table.
+  const key = new THREE.DirectionalLight('#fff0d8', 2.8);
   key.castShadow = true;
   const shadowSize = QUALITY_LEVELS[level].shadow;
   key.shadow.mapSize.set(shadowSize, shadowSize);
-  key.shadow.camera.near = 1;
-  key.shadow.camera.far = 200;
-  const shadowSpan = 44;
+  key.shadow.camera.near = 60;
+  key.shadow.camera.far = 220;
+  const shadowSpan = 16;
   key.shadow.camera.left = -shadowSpan;
   key.shadow.camera.right = shadowSpan;
   key.shadow.camera.top = shadowSpan;
   key.shadow.camera.bottom = -shadowSpan;
-  key.shadow.bias = -0.0008;
-  key.shadow.normalBias = 0.03;
+  key.shadow.bias = -0.0006;
+  key.shadow.normalBias = 0.02;
   scene.add(key);
   scene.add(key.target);
 
-  const fill = new THREE.DirectionalLight('#9fc4ff', 0.6);
-  fill.position.set(-60, 40, -50);
-  scene.add(fill);
-  scene.add(new THREE.HemisphereLight('#3a4a66', '#120d08', 0.55));
-
-  /* ---------------------------------------------------------- materials */
-
-  const textures = {
-    desk: createTableTexture(),
-    ramp: createRampTexture(),
-    concrete: createConcreteTexture(),
-    base: createBaseTexture(),
-    floor: createFloorTexture(),
-  };
-  const materials = {
-    ramp: new THREE.MeshStandardMaterial({ map: textures.ramp, roughness: 0.72 }),
-    concrete: new THREE.MeshStandardMaterial({ map: textures.concrete, roughness: 0.85 }),
-    metal: new THREE.MeshStandardMaterial({ color: '#c3c9d2', roughness: 0.22, metalness: 0.95 }),
-    trim: new THREE.MeshStandardMaterial({ color: '#6d4726', roughness: 0.55 }),
-    base: new THREE.MeshStandardMaterial({ map: textures.base, roughness: 0.8 }),
-    desk: new THREE.MeshStandardMaterial({ map: textures.desk, roughness: 0.62, metalness: 0.02 }),
-    deskEdge: new THREE.MeshStandardMaterial({ color: '#5b3b20', roughness: 0.55 }),
-    floor: new THREE.MeshStandardMaterial({ map: textures.floor, roughness: 0.8 }),
-    ring: new THREE.MeshStandardMaterial({
-      color: '#ffcf3d', emissive: '#ff9d00', emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.6,
-    }),
-  };
-  const propMaterials = createPropMaterials();
+  // Sky light from the window and bounce off the floor.
+  scene.add(new THREE.HemisphereLight('#dbe8ff', '#6b4e33', 0.75));
 
   /* -------------------------------------------------------------- world */
 
-  scene.add(buildGround(materials, textures.desk));
-  scene.add(buildPark(park, materials));
-  scene.add(buildDeskClutter(propMaterials));
+  const kit = createKitMaterials();
+  const room = createRoomMaterials();
+  const ring = new THREE.MeshStandardMaterial({
+    color: '#ffcf3d', emissive: '#ff9d00', emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.6,
+  });
+
+  // Everything that never moves is merged down to one mesh per material:
+  // on a phone, draw calls cost far more than triangles.
+  const built = buildPark(park, kit.materials);
+  const parkGroup = new THREE.Group();
+  parkGroup.add(built.group, buildTableClutter(kit.materials), buildTable(room.materials));
+  scene.add(mergeStatic(parkGroup, { receiveShadow: true, name: 'park' }));
+  scene.add(mergeStatic(buildRoom(room.materials), { receiveShadow: false, name: 'room' }));
+
+  const sunDirection = SUN_OFFSET.clone().negate().normalize();
+  const baked = bakeTableShadows(park, sunDirection);
+  scene.add(baked.mesh);
+
+  // The desk lamp is on: a warm pool of light over its corner of the table.
+  const lamp = new THREE.PointLight('#ffc98a', 1600, 0, 2);
+  if (built.lampHead) lamp.position.copy(built.lampHead);
+  scene.add(lamp);
 
   const letters = park.letters.map((l) => {
-    const letter = createLetter(l.letter, materials.ring);
+    const letter = createLetter(l.letter, ring);
     letter.group.position.set(l.x, l.y, l.z);
     scene.add(letter.group);
     return letter;
@@ -180,14 +161,32 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   yawGroup.add(pitchGroup);
   pitchGroup.add(rollGroup);
   rollGroup.add(flipGroup);
-  flipGroup.add(board.object);
   scene.add(root);
 
   // Off the roll axis on purpose: a point on the centre line would not move
   // during a kickflip, so the trail would draw nothing.
   const noseMarker = new THREE.Object3D();
   noseMarker.position.set(4.6, -0.2, 1.4);
-  board.object.add(noseMarker);
+
+  // The board is forty-odd parts — bolts, nuts, bushings, bearings — each its
+  // own draw call, twice over with its shadow. What gets drawn is a merged
+  // copy, one mesh per material, rebuilt whenever the board's look changes.
+  let boardProxy = null;
+  function rebuildBoardProxy() {
+    if (boardProxy) {
+      flipGroup.remove(boardProxy);
+      boardProxy.traverse((node) => { if (node.isMesh) node.geometry.dispose(); });
+      for (const material of boardProxy.userData.ownedMaterials ?? []) material.dispose();
+    }
+    board.object.removeFromParent();
+    const position = board.object.position.clone();
+    board.object.position.set(0, 0, 0);
+    boardProxy = mergeStatic(board.object, { castShadow: true, disposeSource: false, name: 'board' });
+    board.object.position.copy(position);
+    boardProxy.add(noseMarker);
+    flipGroup.add(boardProxy);
+  }
+  rebuildBoardProxy();
 
   const effects = createEffects(scene, { accent });
 
@@ -205,7 +204,7 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     const lift = -spec.groundY; // wheel bottoms up to the deck top
     const middle = lift * 0.55;
     flipGroup.position.y = middle;
-    board.object.position.y = lift - middle;
+    boardProxy.position.y = lift - middle;
 
     const facing = facingOf(rider);
     const fx = Math.cos(facing);
@@ -280,7 +279,7 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     cameraYaw += shortestAngle(cameraYaw, travelling) * (1 - Math.exp(-dt * swing));
 
     // Follow height lazily so airs rise in the frame; never down off the desk.
-    const targetY = Math.max(rider.y, DESK.y);
+    const targetY = Math.max(rider.y, -20);
     followY = snap ? targetY : followY + (targetY - followY) * (1 - Math.exp(-dt * 4));
 
     punch = Math.max(0, punch - dt * 2.2);
@@ -290,20 +289,26 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
 
     const bx = rider.x;
     const bz = rider.z;
-    const eyeY = followY + 2;
-    // Walk back from the board toward the ideal spot; stop short of anything
-    // that would come between them.
+    const eyeY = followY + 2.5;
     const cx = -Math.cos(cameraYaw);
     const cz = -Math.sin(cameraYaw);
-    for (let i = 1; i <= 12; i += 1) {
-      const t = i / 12;
+    // Keep a clear line from the board back to the camera. Something low in
+    // the way — a laptop, a ledge — the camera rises over; only something it
+    // would have to climb too far for (the back of a quarter pipe, a mug)
+    // makes it come in closer instead.
+    const maxHeight = height * 1.9;
+    for (let i = 1; i <= 14; i += 1) {
+      const t = i / 14;
       const px = bx + cx * distance * t;
       const pz = bz + cz * distance * t;
+      const ground = park.heightAt(px, pz) + 0.8;
       const lineY = eyeY + (followY + height - eyeY) * t;
-      const ground = park.heightAt(px, pz);
-      if (ground + 1.2 > lineY) {
-        const keep = Math.max(0.35, (i - 1) / 12);
-        distance *= keep;
+      if (ground <= lineY) continue;
+      const needed = eyeY + (ground - eyeY) / t - followY;
+      if (needed <= maxHeight) {
+        height = needed;
+      } else {
+        distance *= Math.max(0.35, (i - 1) / 14);
         height = Math.max(height, ground + 2.5 - followY);
         break;
       }
@@ -331,8 +336,10 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     else smoothedLook.lerp(lookTarget, 1 - Math.exp(-dt * 10));
     camera.lookAt(smoothedLook);
 
-    key.position.set(rider.x + 30, Math.max(rider.y, 0) + 70, rider.z + 24);
-    key.target.position.set(rider.x, Math.max(rider.y, 0), rider.z);
+    // The sun's shadow box rides along with the board.
+    const ground = Math.max(rider.y, 0);
+    key.position.set(rider.x + SUN_OFFSET.x, ground + SUN_OFFSET.y, rider.z + SUN_OFFSET.z);
+    key.target.position.set(rider.x, ground, rider.z);
     key.target.updateMatrixWorld();
   }
 
@@ -354,8 +361,19 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   const post = createTiltShift(renderer, scene, camera, { lowPrecision: phone });
   // A deeper sharp band than the side view had: the chase camera looks down
   // the park, and the rider needs to read what is coming.
-  post.setRange(0.16);
+  post.setRange(0.2);
+  post.setFeather(0.4);
+  // Gentler than the side-on view: the room around now tells you the board
+  // is small, so the blur only has to hint at it, and the park ahead must
+  // stay readable.
+  post.setStrength(3);
   const projected = new THREE.Vector3();
+
+  // Compile every shader in the background while the start screen is up, so
+  // dropping in does not stutter on the first frames.
+  if (renderer.extensions.has('KHR_parallel_shader_compile')) {
+    renderer.compileAsync(scene, camera).catch(() => {});
+  }
 
   const size = { width: 1, height: 1 };
 
@@ -371,6 +389,9 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
       key.shadow.map = null;
     }
     key.castShadow = next.shadows;
+    // The lamp is a second per-pixel light on every lit surface: the
+    // cheapest budgets go without it.
+    lamp.visible = next.lamp !== false;
     post.setEnabled(next.blur);
     resize(size.width, size.height);
     return true;
@@ -392,6 +413,7 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   }
 
   function render(rider) {
+    renderer.info.reset();
     // Keep the sharp band on the board wherever it is in the frame.
     projected.set(rider.x, rider.y + 1, rider.z).project(camera);
     post.setFocus(0.5 + projected.y * 0.5);
@@ -408,9 +430,14 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
       letter.sprite.material.dispose();
     }
     board.dispose();
-    for (const material of [...Object.values(materials), ...Object.values(propMaterials)]) material.dispose();
-    for (const texture of Object.values(textures)) texture.dispose();
-    scene.background.dispose();
+    for (const material of boardProxy.userData.ownedMaterials ?? []) material.dispose();
+    for (const group of scene.children) {
+      for (const material of group.userData?.ownedMaterials ?? []) material.dispose();
+    }
+    const materials = [...Object.values(kit.materials), ...Object.values(room.materials).flat(), ring, baked.material];
+    for (const material of materials) material.dispose();
+    const textures = [...Object.values(kit.textures), ...Object.values(room.textures).flat(), baked.texture];
+    for (const texture of textures) texture.dispose();
     environment.dispose();
     pmrem.dispose();
     post.dispose();
@@ -431,6 +458,10 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     updateCamera,
     animateLetters,
     lowerQuality,
+    /** What the last frame cost: draw calls and triangles, all passes. */
+    get stats() {
+      return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+    },
     get qualityLevel() {
       return level;
     },
@@ -441,6 +472,7 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     /** Re-skin the board from the customiser's config. */
     applyConfig(config) {
       board.update(config, null);
+      rebuildBoardProxy();
       effects.setAccent(config.deck.ink);
     },
 

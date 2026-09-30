@@ -6,7 +6,14 @@ import { isTouchDevice } from '../lib/device.js';
  * start / pause / game-over overlays. Kept as DOM rather than drawn into the
  * canvas so it stays crisp and readable at any pixel ratio.
  */
-export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S', 'K', 'A', 'T', 'E'] }) {
+export function createGameHud(host, {
+  onExit,
+  onRestart,
+  onPause,
+  settings = null,
+  onSetting = () => {},
+  letters = ['S', 'K', 'A', 'T', 'E'],
+}) {
   const coarse = isTouchDevice();
 
   const score = el('div', { class: 'hud__score', text: '0' });
@@ -55,7 +62,7 @@ export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S'
 
   const controlHint = coarse
     ? [
-      ['Left stick', 'steer · up to push · down to brake'],
+      ['Left stick', 'steer · down to brake (up to push, if auto-push is off)'],
       ['Hold Ollie', 'crouch — let go to pop, longer hold, higher'],
       ['Trick buttons', 'flip it — on the ground they ollie too'],
       ['Stick in the air', 'spin 180s and 360s'],
@@ -66,6 +73,31 @@ export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S'
       ['Hold Space', 'crouch — let go to pop, longer hold, higher'],
       ['J  K  L  I', 'kickflip · shuv · heelflip · 360 flip'],
     ];
+
+  /** Assists and feedback, switchable from the start and pause screens. */
+  const SETTINGS = [
+    { key: 'autoPush', label: 'Auto-push', detail: 'keep rolling without holding forward' },
+    { key: 'spinAssist', label: 'Spin assist', detail: 'let go mid-spin and it settles to a clean 180' },
+    { key: 'haptics', label: 'Vibration', detail: 'a buzz on pops, landings and bails', touchOnly: true },
+  ];
+
+  function settingsList() {
+    if (!settings) return null;
+    return el('div', { class: 'hud__settings' }, SETTINGS
+      .filter((s) => !s.touchOnly || (coarse && 'vibrate' in navigator))
+      .map((s) => {
+        const input = el('input', { type: 'checkbox', class: 'hud__switch' });
+        input.checked = !!settings[s.key];
+        input.addEventListener('change', () => onSetting(s.key, input.checked));
+        return el('label', { class: 'hud__setting' }, [
+          el('span', { class: 'hud__settingtext' }, [
+            el('strong', { text: s.label }),
+            el('small', { text: s.detail }),
+          ]),
+          input,
+        ]);
+      }));
+  }
 
   function hintList() {
     return el('dl', { class: 'hud__keys' }, controlHint.flatMap(([key, what]) => [
@@ -123,6 +155,7 @@ export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S'
         el('h2', { text: 'Fingerboard Park' }),
         el('p', { class: 'hud__lead', text: 'Roam the park: air the quarter pipes, grind the rails and ledges, drop the stairs, and find the letters S-K-A-T-E. Keep landing tricks to build your multiplier.' }),
         hintList(),
+        settingsList(),
         el('button', {
           class: 'hud__go',
           type: 'button',
@@ -135,6 +168,7 @@ export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S'
       panel([
         el('h2', { text: 'Paused' }),
         hintList(),
+        settingsList(),
         el('button', {
           class: 'hud__go',
           type: 'button',

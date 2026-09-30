@@ -33,13 +33,14 @@ download: the deck, trucks, wheels and every graphic are generated in code.
 ## The game
 
 **Skate it** in the top bar drops the board you just built into a 3D
-fingerboard park on a desk, seen from behind in third person. Roll anywhere:
+fingerboard setup on a table in a bedroom, seen from behind in third person.
+Roll anywhere:
 air the quarter pipes, grind the rails and ledges, drop the stairs and find the
 five letters S-K-A-T-E. Two-minute sessions; score as much as you can.
 
 | | Keyboard | Phone |
 |---|---|---|
-| Push / brake | W / S (or ↑ / ↓) | left stick up / down |
+| Push / brake | W / S (or ↑ / ↓) | auto-push on; left stick down to brake |
 | Steer | A / D (or ← / →) | left stick left / right |
 | Ollie | hold Space to crouch, let go to pop | hold **Ollie**, let go |
 | Kickflip · Shuv · Heelflip · 360 flip | J · K · L · I | the trick buttons |
@@ -58,6 +59,12 @@ five letters S-K-A-T-E. Two-minute sessions; score as much as you can.
   edge and you bail.
 - Every scoring landing or grind raises the multiplier; a bail resets it, and
   so do three seconds of just rolling.
+- Ride off the edge of the table and you fall to the floor — then you are put
+  back on near where you went over, facing in.
+- Settings on the start and pause screens: **auto-push** (keep rolling without
+  holding forward; on by default on phones), **spin assist** (let go mid-spin
+  and it settles to the nearest clean 180) and, on phones that can,
+  **vibration** on pops, landings, grinds and bails. They are remembered.
 
 On phones the game is built to hold its frame rate rather than look its best:
 it starts at a moderate resolution, and if the typical frame takes longer
@@ -69,22 +76,46 @@ app is put away or the GPU context is lost, and every trip into the park
 releases its GL context on the way out, so going back and forth to the garage
 never runs a phone out of them.
 
+It is also built to be cheap to draw. Everything that never moves — the
+room, the table, every obstacle — is merged into one mesh per material, and
+plain-coloured materials share one material with the colour moved into the
+vertices; the board's forty-odd parts are merged the same way. A frame is
+about 35 draw calls, down from about 165. The obstacles' shadows on the table
+are baked once at load, by marching rays through the park's own heights
+(`bakedShadows.js`), so the live shadow map only ever draws the board. The
+room is Lambert-shaded (it is always behind the blur), shader compile logs
+are not read back in production, and shaders are warmed up while the start
+screen is showing where the GPU can compile in parallel.
+
 Landings are scored for what you did with them, and the noise matches: a comic
 starburst for an ordinary one, and for anything really good a full-panel
 flourish with radiating speed lines, a dip into slow motion and a camera lean.
 Flips draw a trail off the nose of the board, grinds throw sparks back along
 the rail, and every landing kicks up an impact ring.
 
-The park: quarter pipes at both ends with steel coping, a funbox with
-grindable sides, a long concrete ledge, a flat bar, a manual pad, two kickers,
-and a platform with a bank up one side and a stair set with a handrail down
-the other, all inside a low wooden lip.
+The setup is what someone would actually put on their table: store-bought
+style fingerboard obstacles — a row of plywood quarter-pipe modules with
+steel coping and screwed-down decks at each end, a plywood funbox, two
+kickers, a black-painted ledge with steel edges, a flat bar, a concrete-look
+manual pad, a platform with a bank and a stair set with a red handrail — and
+whatever else lives on the table, all of it solid and some of it skateable:
+a closed laptop (a very good manual pad), a stack of three hardbacks, a
+300mm ruler bridged across two erasers (the classic homemade ledge), a phone
+lying face down, a mug, a pencil pot and a desk lamp that is switched on.
+Flat things — a sketch of the next ramp, sticky notes, some change, the little
+screwdriver — lie in the corners.
 
-Scale is the point. The deck is 96mm, the park's base board is 2.4m x 1.6m, the
-quarter pipes are 90mm tall and the mug on the desk beside the park is 95mm —
-real sizes, so the board reads as tiny against things you already know the
-size of. A tilt-shift pass keeps a band in focus and blurs the rest, which is
-what a macro lens does to something this small, and it tracks the board.
+Round it is a bedroom: an oak table on legs, a rug, floorboards, a window
+onto rooftops and sky with curtains and a plant on the sill, a radiator, a
+bookshelf, a bed, posters, a door, a desk chair and a real skateboard leaning
+on the wall. Daylight comes in through the window and the lamp warms its
+corner of the table.
+
+Scale is the point. The deck is 96mm, the quarter pipes are 90mm tall, the
+table is 2.6m x 1.7m and 750mm off the floor, the mug is 95mm — real sizes,
+so the board reads as tiny against things you already know the size of. A
+tilt-shift pass keeps a band in focus and softens the rest, which is what a
+macro lens does to something this small, and it tracks the board.
 
 ## Trying it on your phone
 
@@ -156,9 +187,14 @@ src/ui/gameHud.js    score, timer, combo, letters and the game overlays
 src/ui/touchControls.js  the phone stick, ollie and trick buttons
 src/lib/device.js    is this a touch-first device
 src/game/park.js     the course: obstacle layout, heights, grind lines (pure)
+src/game/settings.js auto-push, spin assist, vibration; remembered
 src/game/rider.js    3D board physics, tricks, grinds and scoring (pure)
-src/game/props.js    park meshes built from park.js, the desk and its clutter
-src/game/scene.js    game scene, board pose, third-person chase camera
+src/game/props.js    the obstacle kit and table objects, built from park.js
+src/game/room.js     the bedroom and the table
+src/game/batch.js    merges static meshes into one per material
+src/game/bakedShadows.js  obstacle shadows on the table, baked at load
+src/game/canvasKit.js     canvas textures and small mesh helpers
+src/game/scene.js    game scene, lighting, board pose, third-person camera
 src/game/tiltshift.js the miniature-faking blur
 src/game/effects.js  sparks, flip trails, impact rings, screen shake
 src/game/comic.js    comic starbursts and the big-landing flourish
@@ -172,7 +208,8 @@ test/park.sim.mjs      scripted lines round the park, plus random sessions
 Details worth knowing if you want to extend it:
 
 - **The park is one description.** Each obstacle in `LAYOUT` (`park.js`) is a
-  box, wedge, quarter pipe, stairs or rail with its own position and turn, and
+  box, wedge, quarter pipe, stairs, rail or cylinder with its own position,
+  turn and `look` (plywood, laptop, books, mug…), and
   `heightAt(x, z)` answers from exactly the same profile functions that
   `props.js` samples to build the meshes. What you see is what the board rides.
 - **Collision** treats the board as a rigid plank with contact points across

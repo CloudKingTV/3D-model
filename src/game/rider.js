@@ -22,6 +22,7 @@ export const PHYSICS = {
   slopeGravity: 0.8, // share of gravity felt along a ramp
   pushAccel: 120,
   pushSpeed: 74, // pushing tops out here; ramps can take you faster
+  cruiseSpeed: 46, // auto-push keeps you rolling at this on the flat
   brake: 150,
   rollingFriction: 0.1, // fraction of speed lost per second
   maxSpeed: 125,
@@ -438,9 +439,10 @@ export function stepRider(s, dt, park, input = {}) {
     for (const id of tricks) startTrick(s, id);
   }
 
-  if (s.state === 'ground') stepGround(s, dt, park, steer, throttle, events);
+  const assists = { autoPush: !!input.autoPush, spinAssist: !!input.spinAssist };
+  if (s.state === 'ground') stepGround(s, dt, park, steer, throttle, events, assists);
   else if (s.state === 'grind') stepGrind(s, dt, events);
-  else if (s.state === 'air') stepAir(s, dt, park, steer, events);
+  else if (s.state === 'air') stepAir(s, dt, park, steer, events, assists);
 
   if (s.state !== 'bail') collectLetters(s, park, events);
   if (s.state !== 'air') animateTricks(s, dt);
@@ -551,7 +553,7 @@ function animateTricks(s, dt) {
 
 /* -------------------------------------------------------------- ground */
 
-function stepGround(s, dt, park, steer, throttle, events) {
+function stepGround(s, dt, park, steer, throttle, events, assists = {}) {
   const support = restingSupport(s, park, s.x, s.z, s.heading, Math.atan(slopeAlong(s)));
   const along = support.along;
   const across = support.across;
@@ -573,6 +575,10 @@ function stepGround(s, dt, park, steer, throttle, events) {
     s.speed = Math.min(PHYSICS.pushSpeed, s.speed + PHYSICS.pushAccel * throttle * dt);
   } else if (throttle < 0) {
     s.speed = Math.max(Math.min(s.speed, 0), s.speed + PHYSICS.brake * throttle * dt);
+  } else if (throttle === 0 && assists.autoPush && Math.abs(along) < 0.15 && s.speed < PHYSICS.cruiseSpeed) {
+    // Auto-push: on the flat the rider keeps pushing to a steady roll, so a
+    // thumb on a phone is free for tricks instead of holding the stick up.
+    s.speed = Math.min(PHYSICS.cruiseSpeed, s.speed + PHYSICS.pushAccel * 0.55 * dt);
   }
   s.speed -= s.speed * PHYSICS.rollingFriction * dt;
   s.speed = Math.min(PHYSICS.maxSpeed, s.speed);
@@ -733,9 +739,16 @@ function hitFace(s, face, events, airborne, park = null, surface = null) {
 
 /* ----------------------------------------------------------------- air */
 
-function stepAir(s, dt, park, steer, events) {
+function stepAir(s, dt, park, steer, events, assists = {}) {
   s.airTime += dt;
-  const spin = steer * PHYSICS.spinRate * dt;
+  let spin = steer * PHYSICS.spinRate * dt;
+  // Spin assist: let go of the turn and the board settles to the nearest
+  // half-turn, the way a rider finishes a spin — so a slightly short 180
+  // still lands as a 180 instead of sideways.
+  if (assists.spinAssist && Math.abs(steer) < 0.15 && s.airTime > 0.08) {
+    const off = nearestMultiple(s.bodyYaw, Math.PI) - s.bodyYaw;
+    spin += off * Math.min(1, dt * 8);
+  }
   const shuvBefore = s.shuv;
   s.bodyYaw += spin;
   s.spinTotal += spin;
@@ -820,11 +833,8 @@ function stepAir(s, dt, park, steer, events) {
     s.z = to.z;
   }
 
-  // Over the wall and out of the park: back to the start.
-  const outside = Math.abs(s.x) > TABLE.halfX || Math.abs(s.z) > TABLE.halfZ;
-  if (s.state === 'air' && outside && s.y < 0) {
-    bail(s, events, 'Out of the park', { x: 0, z: 0 }, park);
-  } else if (s.state === 'air' && s.y < FLOOR_Y + 60) {
+  // Off the edge of the table and on the way to the floor.
+  if (s.state === 'air' && s.y < FLOOR_Y + 63) {
     bail(s, events, 'Fell off the table', { x: 0, z: 0 }, park);
   }
 }
@@ -1178,7 +1188,25 @@ function recover(s, park, events) {
     }
   }
   if (offTable) {
-    placeAtSpawn(s, park);
+    // Fell off: back on the table near where you went over, facing in.
+    const x = Math.max(-TABLE.halfX + 12, Math.min(TABLE.halfX - 12, s.x));
+    const z = Math.max(-TABLE.halfZ + 12, Math.min(TABLE.halfZ - 12, s.z));
+    const inward = Math.atan2(-z, -x);
+    const spot = nearestCleanSpot(s, park, x, z, inward);
+    if (spot) {
+      s.x = spot.x;
+      s.z = spot.z;
+      s.heading = inward;
+      s.bodyYaw = 0;
+      const support = restingSupport(s, park, s.x, s.z, s.heading, 0);
+      s.y = support.y;
+      s.grad = { x: support.gx, z: support.gz };
+      s.state = 'ground';
+      s.speed = 0;
+      resetTricks(s);
+    } else {
+      placeAtSpawn(s, park);
+    }
   } else {
     // Face the way the board is pointing, stood still.
     s.heading = heading;

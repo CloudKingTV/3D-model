@@ -5,6 +5,7 @@ import { createViewer } from './lib/viewer.js';
 import { createPanel } from './ui/panel.js';
 import { el, ICONS } from './ui/controls.js';
 import { isTouchDevice } from './lib/device.js';
+import { loadSettings, saveSettings } from './game/settings.js';
 import { BACKGROUNDS, rgba } from './lib/textures.js';
 
 const canvas = document.getElementById('viewport');
@@ -188,6 +189,7 @@ function freshPlayfield() {
 
 let game = null;
 let gameHud = null;
+const gameSettings = loadSettings();
 
 function sizeGame() {
   if (!game) return;
@@ -204,15 +206,23 @@ function enterGame() {
     onExit: exitGame,
     onRestart: () => game?.restart(),
     onPause: () => game?.togglePause(),
+    settings: gameSettings,
+    onSetting(key, value) {
+      gameSettings[key] = value;
+      saveSettings(gameSettings);
+    },
   });
   game = createGame(playfield, {
     config: store.config,
     hud: gameHud,
     comicHost: gameStage,
+    settings: gameSettings,
     // Phones get lighter shadows and no MSAA; the tilt-shift stays either way.
     quality: isTouchDevice() ? 'low' : 'high',
   });
   sizeGame();
+  // ?debug exposes the running game to the console and to browser tests.
+  if (new URLSearchParams(location.search).has('debug')) window.__game = game;
 }
 
 function exitGame() {

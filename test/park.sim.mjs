@@ -183,11 +183,57 @@ for (const id of ['kickflip', 'heelflip', 'shuvit', 'treflip']) {
 }
 
 {
-  // Heading square into the perimeter wall at speed.
+  // Riding off the edge of the table: a fall, then back on near the edge,
+  // facing in, rather than all the way back at the start.
   const s = riderFor();
-  place(s, -60, 60, Math.PI / 2, 74);
-  const log = run(s, 1, () => ({ throttle: 1 }));
-  check('perimeter wall holds', Math.abs(s.z) < 78 && log.clip === 0, `z=${s.z.toFixed(1)} ${log.events.filter((e) => e.type === 'bail').map((e) => e.reason)}`);
+  place(s, 0, 74, Math.PI / 2, 60);
+  const log = run(s, 3, () => ({}));
+  const fell = log.events.some((e) => e.type === 'bail' && e.reason === 'Fell off the table');
+  const back = s.state === 'ground' && Math.abs(s.z) < 85 && Math.hypot(s.x - 0, s.z - 73) < 20;
+  check('riding off the table edge falls and respawns nearby', fell && back && log.clip === 0,
+    `state=${s.state} at ${s.x.toFixed(1)},${s.z.toFixed(1)} ${log.events.filter((e) => e.type === 'bail').map((e) => e.reason)}`);
+}
+
+{
+  // The mug on the table is solid all round.
+  const s = riderFor();
+  place(s, 112, 50, Math.PI / 2, 50);
+  const log = run(s, 1, () => ({}));
+  check('the mug is solid', Math.hypot(s.x - 112, s.z - 70) > 4.2 && log.clip === 0,
+    `at ${s.x.toFixed(1)},${s.z.toFixed(1)} ${log.events.filter((e) => e.type === 'bail').map((e) => e.reason)}`);
+}
+
+{
+  // Ollie onto the closed laptop and roll across it.
+  const s = riderFor();
+  place(s, -64, 28, Math.PI / 2, 50);
+  let onTop = false;
+  const log = run(s, 1.2, (r, t) => {
+    if (r.state === 'ground' && Math.abs(r.y - 1.6) < 0.05) onTop = true;
+    return { ollie: t > 0.05 && t < 0.25 };
+  });
+  check('ollie onto the laptop', onTop && log.clip === 0 && count(log, 'bail') === 0,
+    `bails=${log.events.filter((e) => e.type === 'bail').map((e) => e.reason)}`);
+}
+
+{
+  // Auto-push keeps a stopped board rolling on the flat; spin assist turns a
+  // short spin into a clean 180.
+  const s = riderFor();
+  place(s, -80, -12, 0, 0);
+  run(s, 2, () => ({ autoPush: true }));
+  check('auto-push rolls you up to cruising speed', s.speed > 40, `speed=${s.speed.toFixed(1)}`);
+
+  const r = riderFor();
+  place(r, -80, -12, 0, 45);
+  const log = run(r, 1.4, (b, t) => ({
+    ollie: t < 0.4,
+    spinAssist: true,
+    steer: b.state === 'air' && Math.abs(b.spinTotal) < 2.4 ? 1 : 0, // stops at ~140 degrees
+  }));
+  const lands = log.events.filter((e) => e.type === 'land');
+  check('spin assist finishes a short 180', lands.some((e) => e.label.startsWith('180')) && count(log, 'bail') === 0,
+    `${lands.map((e) => e.label).join(', ')} bails=${log.events.filter((e) => e.type === 'bail').map((e) => e.reason)}`);
 }
 
 {

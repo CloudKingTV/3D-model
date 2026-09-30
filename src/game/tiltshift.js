@@ -119,6 +119,9 @@ export function createTiltShift(renderer, scene, camera, { lowPrecision = false 
     setRange(range) {
       for (const pass of passes) pass.uniforms.uRange.value = range;
     },
+    setFeather(feather) {
+      for (const pass of passes) pass.uniforms.uFeather.value = feather;
+    },
     setStrength(strength) {
       for (const pass of passes) pass.uniforms.uStrength.value = strength;
     },

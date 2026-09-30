@@ -39,7 +39,7 @@ function writeBest(score) {
   }
 }
 
-export function createGame(canvas, { config, hud, comicHost, quality = 'high' }) {
+export function createGame(canvas, { config, hud, comicHost, quality = 'high', settings = {} }) {
   const park = createPark();
   const view = createGameScene(canvas, { quality, accent: config.deck.ink, park });
   view.applyConfig(config);
@@ -159,6 +159,8 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
       throttle: Math.max(-1, Math.min(1, throttle)),
       ollie: keys.has('Space') || touch.ollie,
       tricks,
+      autoPush: !!settings.autoPush,
+      spinAssist: !!settings.spinAssist,
     };
   }
 
@@ -182,6 +184,16 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
     return 'small';
   }
 
+  /** A short buzz, on phones that can, when the player has it switched on. */
+  function buzz(pattern) {
+    if (!settings.haptics || typeof navigator.vibrate !== 'function') return;
+    try {
+      navigator.vibrate(pattern);
+    } catch {
+      /* some embedded browsers refuse; it is only a nicety */
+    }
+  }
+
   function handleEvent(event, dt) {
     // Grind ticks fire every physics step, so only project when a pop-up
     // actually needs a screen position.
@@ -198,6 +210,7 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
     switch (event.type) {
       case 'pop':
         view.effects.burst(rider.x, rider.y, rider.z, 6, 16);
+        buzz(8);
         break;
 
       case 'grinding':
@@ -205,6 +218,7 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
         break;
 
       case 'grindStart':
+        buzz(15);
         hud.flashTrick(event.style, 0, rider.multiplier);
         view.effects.burst(rider.x, rider.y, rider.z, 14, 26);
         view.effects.addShake(0.12);
@@ -214,6 +228,7 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
       case 'land': {
         hud.flashTrick(event.label, event.points, event.multiplier);
         const tier = tierFor(event);
+        buzz(tier === 'huge' ? [20, 40, 30] : tier === 'big' ? 20 : 12);
         view.effects.impactRing(rider.x, rider.y, rider.z, tier === 'huge' ? 1.5 : 1);
         view.effects.burst(rider.x, rider.y, rider.z, tier === 'huge' ? 30 : 14, 30);
         view.effects.addShake(tier === 'huge' ? 0.4 : 0.14);
@@ -237,6 +252,7 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
         break;
 
       case 'bail':
+        buzz([40, 30, 40]);
         hud.flashBail(event.reason);
         view.effects.burst(rider.x, rider.y, rider.z, 22, 34);
         view.effects.addShake(0.5);
@@ -248,6 +264,7 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
         break;
 
       case 'letter':
+        buzz(25);
         hud.setLetters(rider.letters);
         comic.pop({ tier: 'big', word: `${event.letter}!`, detail: `Letter +${event.points}`, ...near() });
         if (event.all) {
@@ -388,6 +405,9 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
     },
     get qualityLevel() {
       return view.qualityLevel;
+    },
+    get renderStats() {
+      return view.stats;
     },
     dispose() {
       running = false;

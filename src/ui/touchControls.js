@@ -63,7 +63,10 @@ export function createTouchControls(host, { onTrick }) {
     }
     knob.style.transform = `translate(${dx * r * 0.62}px, ${dy * r * 0.62}px)`;
     const shape = (v) => (Math.abs(v) < DEAD_ZONE ? 0 : Math.sign(v) * ((Math.abs(v) - DEAD_ZONE) / (1 - DEAD_ZONE)));
-    state.steer = shape(dx);
+    // Steering gets a curve: small movements turn gently, so lining up a
+    // rail is easy with a thumb, while a full push still turns hard.
+    const steer = shape(dx);
+    state.steer = Math.sign(steer) * Math.abs(steer) ** 1.5;
     state.throttle = shape(-dy);
   }
 
