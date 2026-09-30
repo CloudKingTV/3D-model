@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * The 24 marbles: a name, a surface drawn on a canvas (wrapped round the
+ * The marbles: a name, a surface drawn on a canvas (wrapped round the
  * sphere, 2:1, like a globe) and how shiny it is. The same canvas drawing
  * makes the 3D material and the little picture on the picker, so what you
  * choose is what races. Nothing here is downloaded.
@@ -272,6 +272,187 @@ export const MARBLES = [
     roughness: 0.03,
     swatch: '#9fd3de',
   },
+  {
+    name: 'Aurora',
+    draw(ctx) {
+      ctx.fillStyle = '#06142b';
+      ctx.fillRect(0, 0, W, H);
+      ['#29ffb4', '#3fd0ff', '#b56bff'].forEach((c, i) => {
+        const g = ctx.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(0.5, c);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 26 - i * 6;
+        ctx.globalAlpha = 0.75;
+        ctx.beginPath();
+        for (let x = -10; x <= W + 10; x += 4) {
+          const y = H / 2 + Math.sin((x / W) * Math.PI * 6 + i * 2) * 22 + Math.sin((x / W) * Math.PI * 2) * 12;
+          if (x === -10) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    },
+    glow: true,
+    roughness: 0.05,
+    swatch: '#29ffb4',
+  },
+  {
+    name: 'Nebula',
+    draw(ctx) {
+      ctx.fillStyle = '#090313';
+      ctx.fillRect(0, 0, W, H);
+      const random = rng(41);
+      for (let i = 0; i < 14; i += 1) {
+        const x = random() * W;
+        const y = random() * H;
+        const r = ctx.createRadialGradient(x, y, 0, x, y, 20 + random() * 40);
+        const c = ['255,64,160', '90,120,255', '255,160,60'][i % 3];
+        r.addColorStop(0, `rgba(${c},0.8)`);
+        r.addColorStop(1, `rgba(${c},0)`);
+        ctx.fillStyle = r;
+        ctx.fillRect(0, 0, W, H);
+      }
+      for (let i = 0; i < 120; i += 1) {
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(random() * W, random() * H, 1.2, 1.2);
+      }
+    },
+    glow: true,
+    roughness: 0.05,
+    swatch: '#ff40a0',
+  },
+  {
+    name: 'Plasma',
+    draw(ctx) {
+      const image = ctx.createImageData(W, H);
+      for (let y = 0; y < H; y += 1) {
+        for (let x = 0; x < W; x += 1) {
+          const u = (x / W) * Math.PI * 2;
+          const v = (y / H) * Math.PI;
+          const n = Math.sin(u * 3 + Math.sin(v * 4) * 2) + Math.sin(v * 5 + Math.cos(u * 2) * 2);
+          const k = (n + 2) / 4;
+          const o = (y * W + x) * 4;
+          image.data[o] = 120 + 135 * k;
+          image.data[o + 1] = 30 + 60 * (1 - k);
+          image.data[o + 2] = 255 * (1 - k * 0.6);
+          image.data[o + 3] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+    },
+    glow: true,
+    roughness: 0.08,
+    swatch: '#c43cff',
+  },
+  {
+    name: 'Toxic',
+    draw(ctx) {
+      ctx.fillStyle = '#123a0a';
+      ctx.fillRect(0, 0, W, H);
+      const random = rng(13);
+      for (let i = 0; i < 30; i += 1) {
+        ctx.fillStyle = i % 3 ? '#8cff2e' : '#e6ff5c';
+        ctx.beginPath();
+        const y = 10 + random() * (H - 20);
+        const r = 3 + random() * 9;
+        ctx.ellipse(random() * W, y, r / Math.max(0.35, Math.sin((y / H) * Math.PI)), r, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    glow: true,
+    roughness: 0.12,
+    swatch: '#8cff2e',
+  },
+  {
+    name: 'Circuit',
+    draw(ctx) {
+      ctx.fillStyle = '#071a17';
+      ctx.fillRect(0, 0, W, H);
+      const random = rng(77);
+      ctx.strokeStyle = '#00ffc3';
+      ctx.fillStyle = '#00ffc3';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 26; i += 1) {
+        let x = Math.round(random() * 16) * 16;
+        let y = Math.round(random() * 8) * 16;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for (let s = 0; s < 4; s += 1) {
+          if (random() < 0.5) x += (random() < 0.5 ? -1 : 1) * 16; else y += (random() < 0.5 ? -1 : 1) * 16;
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.fillRect(x - 3, y - 3, 6, 6);
+      }
+    },
+    glow: true,
+    roughness: 0.2,
+    metalness: 0.3,
+    swatch: '#00ffc3',
+  },
+  {
+    name: 'Sakura',
+    draw(ctx) {
+      ctx.fillStyle = '#ffe3ee';
+      ctx.fillRect(0, 0, W, H);
+      const random = rng(8);
+      for (let i = 0; i < 26; i += 1) {
+        const x = random() * W;
+        const y = 12 + random() * (H - 24);
+        ctx.fillStyle = random() < 0.5 ? '#ff8fb8' : '#ffb3cf';
+        for (let p = 0; p < 5; p += 1) {
+          const a = (p / 5) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.ellipse(x + Math.cos(a) * 4, y + Math.sin(a) * 4, 4, 2.6, a, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#ffd84d';
+        ctx.fillRect(x - 1, y - 1, 2, 2);
+      }
+    },
+    roughness: 0.14,
+    swatch: '#ff8fb8',
+  },
+  {
+    name: 'Honey',
+    draw(ctx) {
+      ctx.fillStyle = '#e89a0c';
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#ffd35c';
+      ctx.lineWidth = 2;
+      const s = 10;
+      for (let row = 0; row < H / (s * 1.5) + 1; row += 1) {
+        for (let col = 0; col < W / (s * 1.73) + 1; col += 1) {
+          const x = col * s * 1.73 + (row % 2) * s * 0.87;
+          const y = row * s * 1.5;
+          ctx.beginPath();
+          for (let k = 0; k < 6; k += 1) {
+            const a = Math.PI / 6 + (k / 6) * Math.PI * 2;
+            ctx.lineTo(x + Math.cos(a) * s, y + Math.sin(a) * s);
+          }
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+    },
+    roughness: 0.1,
+    swatch: '#e89a0c',
+  },
+  {
+    name: 'Hologram',
+    draw(ctx) {
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      ['#b8f3ff', '#ffc7f5', '#fff6b8', '#c7ffd8', '#c9c7ff'].forEach((c, i, all) => g.addColorStop(i / (all.length - 1), c));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    },
+    iridescent: true,
+    roughness: 0.06,
+    metalness: 0.6,
+    swatch: 'linear-gradient(135deg, #b8f3ff, #ffc7f5, #fff6b8)',
+  },
 ];
 
 /** The marble's surface as a canvas (shared by the material and the picker). */
@@ -292,7 +473,11 @@ export function createMarbleMaterial(design, canvas = drawMarble(design)) {
     roughness: design.roughness ?? 0.1,
     metalness: design.metalness ?? 0,
     // Glass-hard lacquer: a sharp reflection of the sky over the colour.
-    clearcoat: design.metalness ? 0 : 1,
+    clearcoat: design.metalness && !design.iridescent ? 0 : 1,
+    // A film of rainbow sheen that shifts with the angle.
+    iridescence: design.iridescent ? 1 : 0,
+    iridescenceIOR: 1.6,
+    iridescenceThicknessRange: [200, 800],
     clearcoatRoughness: 0.04,
     emissiveMap: design.glow ? map : null,
     emissive: design.glow ? new THREE.Color(0.9, 0.9, 0.9) : new THREE.Color(0, 0, 0),

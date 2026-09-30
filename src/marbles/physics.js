@@ -32,7 +32,20 @@ export const RACE = {
   fireDelay: 30, // seconds after the winner finishes
   fireSafety: 170, // start the fire anyway if nobody has finished by now
   fireCrossing: 25, // seconds for the fire to sweep start to finish
+  // Steering and power-ups (league races).
+  steer: 11, // sideways acceleration at full steer
+  turbo: 44, // acceleration during a turbo
+  turboTime: 1.7,
+  turboCap: 33,
+  ghostTime: 3.2,
+  hop: 9.5,
+  shockRadius: 5,
+  shockKick: 11,
+  boxRespawn: 2.5,
+  pickupReach: 1.05,
 };
+
+export const ITEMS = ['turbo', 'ghost', 'shock', 'hop'];
 
 const R = MARBLE_RADIUS;
 
@@ -129,7 +142,9 @@ function closestOnSegment(px, py, pz, ax, ay, az, dx, dy, dz) {
 
 /* ---------------------------------------------------------------- race */
 
-export function createRace(track, count = 24, { seed = 1 } = {}) {
+export function createRace(track, count = 24, {
+  seed = 1, items = false, steering = false, skill = 0.5, watch = null, rolling = RACE.rolling,
+} = {}) {
   const hash = buildHash(track.triangles);
   const gateHash = buildHash(track.gate.triangles);
   // Indexed by id: marbles[id] is always marble id, whatever its grid slot.
@@ -172,8 +187,25 @@ export function createRace(track, count = 24, { seed = 1 } = {}) {
       place: null,
       eliminated: false,
       stillFor: 0,
+      // Steering (-1..1), the power-up held, and what is running.
+      steer: 0,
+      ai: true,
+      item: null,
+      turboUntil: 0,
+      ghostUntil: 0,
+      aiLane: (random() * 2 - 1) * 2,
+      aiThink: random() * 0.12,
+      aiUseAt: null,
+      coins: 0,
     };
   });
+
+  const pickups = items ? (track.pickups ?? []).map((p, i) => ({ ...p, i, taken: false, back: 0 })) : [];
+  const buckets = new Map();
+  for (const p of pickups) {
+    if (!buckets.has(p.index)) buckets.set(p.index, []);
+    buckets.get(p.index).push(p);
+  }
 
   return {
     track,
@@ -187,6 +219,18 @@ export function createRace(track, count = 24, { seed = 1 } = {}) {
     fire: { active: false, s: 0, startsAt: null },
     over: false,
     obstacles: track.obstacles,
+    boosts: track.obstacles.filter((o) => o.type === 'boost'),
+    // Power-ups and steering.
+    items,
+    steering,
+    skill,
+    watch, // the marble whose coins and knocks are reported (the player's)
+    rolling,
+    pickups,
+    buckets,
+    random,
+    t: 0, // simulated time including before the start, for effect timers
+    queue: [], // events raised between steps (a power-up used from the UI)
   };
 }
 
@@ -199,7 +243,7 @@ export function startRace(race) {
 
 /** Advance by `dt` in fixed small steps. Returns events. */
 export function stepRace(race, dt) {
-  const events = [];
+  const events = race.queue.splice(0);
   const steps = Math.max(1, Math.round(dt / RACE.step));
   const h = dt / steps;
   for (let i = 0; i < steps; i += 1) substep(race, h, events);
@@ -324,15 +368,16 @@ function collideObstacles(race, m, events) {
   }
 }
 
-function collideMarbles(race) {
+function collideMarbles(race, events) {
   const list = race.marbles;
   const min = 2 * R;
+  const t = race.t;
   for (let i = 0; i < list.length; i += 1) {
     const a = list[i];
-    if (a.eliminated) continue;
+    if (a.eliminated || a.ghostUntil > t) continue;
     for (let j = i + 1; j < list.length; j += 1) {
       const b = list[j];
-      if (b.eliminated) continue;
+      if (b.eliminated || b.ghostUntil > t) continue;
       const dx = b.x - a.x;
       if (dx > min || dx < -min) continue;
       const dy = b.y - a.y;
@@ -348,6 +393,7 @@ function collideMarbles(race) {
       b.x += nx * push; b.y += ny * push; b.z += nz * push;
       const vn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny + (b.vz - a.vz) * nz;
       if (vn < 0) {
+        if (vn < -3 && (a.id === race.watch || b.id === race.watch)) events.push({ type: 'clack', id: race.watch, speed: -vn });
         const j2 = (-(1 + RACE.marbleRestitution) * vn) / 2;
         a.vx -= j2 * nx; a.vy -= j2 * ny; a.vz -= j2 * nz;
         b.vx += j2 * nx; b.vy += j2 * ny; b.vz += j2 * nz;
@@ -396,6 +442,7 @@ function respawn(race, m, events) {
 function substep(race, h, events) {
   const { marbles, track: layout } = race;
   if (race.started) race.time += h;
+  race.t += h;
 
   for (const o of race.obstacles) {
     if (o.type === 'spinner') o.angle += o.omega * h;
@@ -409,7 +456,7 @@ function substep(race, h, events) {
     // Gravity, drag and rolling resistance.
     m.vy -= RACE.gravity * h;
     const speed = Math.hypot(m.vx, m.vy, m.vz);
-    const rolling = m.touching && speed > 0.01 ? RACE.rolling / speed : 0;
+    const rolling = m.touching && speed > 0.01 ? race.rolling / speed : 0;
     const slow = Math.min(1, (RACE.drag * speed + rolling) * h);
     m.vx -= m.vx * slow;
     m.vy -= m.vy * slow;
@@ -428,7 +475,7 @@ function substep(race, h, events) {
     collideObstacles(race, m, events);
   }
 
-  collideMarbles(race);
+  collideMarbles(race, events);
 
   for (const m of marbles) {
     if (m.eliminated || m.parked) continue;
@@ -447,7 +494,27 @@ function substep(race, h, events) {
       if (!m.boosting) events.push({ type: 'boost', id: m.id });
       m.boosting = true;
     }
-    if (m.boosting && !race.obstacles.some((o) => o.type === 'boost' && m.index >= o.from && m.index <= o.to)) m.boosting = false;
+    if (m.boosting && !race.boosts.some((o) => m.index >= o.from && m.index <= o.to)) m.boosting = false;
+
+    if (race.started && !m.finished) {
+      // Steering: a sideways push across the floor while rolling on it.
+      if (race.steering) {
+        if (m.ai) think(race, m, p, h, events);
+        if (m.touching && m.steer) {
+          const a = RACE.steer * Math.max(-1, Math.min(1, m.steer)) * h;
+          m.vx += p.r[0] * a; m.vy += p.r[1] * a; m.vz += p.r[2] * a;
+        }
+      }
+      if (m.turboUntil > race.t) {
+        const along = m.vx * p.t[0] + m.vy * p.t[1] + m.vz * p.t[2];
+        if (along < RACE.turboCap) {
+          m.vx += p.t[0] * RACE.turbo * h;
+          m.vy += p.t[1] * RACE.turbo * h;
+          m.vz += p.t[2] * RACE.turbo * h;
+        }
+      }
+      if (race.items) collectPickups(race, m, events);
+    }
 
     // Jumped the track: put it back on, a little way behind.
     if (distance > p.half + p.wall + 8 || m.y < p.y - 12) respawn(race, m, events);
@@ -496,6 +563,143 @@ function substep(race, h, events) {
     if (!remaining && !race.over) {
       race.over = true;
       events.push({ type: 'over' });
+    }
+  }
+}
+
+/* ------------------------------------------------------------ power-ups */
+
+/** Coins (the watched marble's) and boxes (anyone without an item). */
+function collectPickups(race, m, events) {
+  const reach = RACE.pickupReach * RACE.pickupReach;
+  for (let i = m.index - 2; i <= m.index + 2; i += 1) {
+    const list = race.buckets.get(i);
+    if (!list) continue;
+    for (const p of list) {
+      const d = (m.x - p.x) ** 2 + (m.y - p.y) ** 2 + (m.z - p.z) ** 2;
+      if (d > reach) continue;
+      if (p.kind === 'coin') {
+        if (m.id !== race.watch || p.taken) continue;
+        p.taken = true;
+        m.coins += 1;
+        events.push({ type: 'coin', id: m.id, pickup: p });
+      } else if (p.kind === 'box') {
+        if (race.t < p.back || m.item) continue;
+        p.back = race.t + RACE.boxRespawn;
+        m.item = rollItem(race, m);
+        m.aiUseAt = null;
+        events.push({ type: 'item', id: m.id, item: m.item, pickup: p });
+      }
+    }
+  }
+}
+
+/**
+ * Which power-up a box gives depends on where you are: the back of the
+ * field gets turbos to catch up, the front gets defensive tricks.
+ */
+function rollItem(race, m) {
+  let ahead = 0;
+  for (const o of race.marbles) if (o !== m && !o.eliminated && (o.finished || o.progress > m.progress)) ahead += 1;
+  const rank = ahead / Math.max(1, race.marbles.length - 1); // 0 front .. 1 back
+  const weights = {
+    turbo: 0.05 + rank * 0.6,
+    ghost: 0.35 - rank * 0.2,
+    shock: 0.35 - rank * 0.15,
+    hop: 0.25,
+  };
+  const total = Object.values(weights).reduce((a, b) => a + b, 0);
+  let roll = race.random() * total;
+  for (const [item, w] of Object.entries(weights)) {
+    roll -= w;
+    if (roll < 0) return item;
+  }
+  return 'turbo';
+}
+
+/** Use marble `id`'s power-up now. Returns the item used, or null. */
+export function useItem(race, id) {
+  const m = race.marbles[id];
+  if (!m || !m.item || m.eliminated || m.finished || !race.started) return null;
+  const item = m.item;
+  m.item = null;
+  m.aiUseAt = null;
+  const p = race.track.samples[m.index];
+  if (item === 'turbo') {
+    m.turboUntil = race.t + RACE.turboTime;
+  } else if (item === 'ghost') {
+    m.ghostUntil = race.t + RACE.ghostTime;
+  } else if (item === 'hop') {
+    m.vx += p.u[0] * RACE.hop; m.vy += p.u[1] * RACE.hop; m.vz += p.u[2] * RACE.hop;
+  } else if (item === 'shock') {
+    const hits = [];
+    for (const o of race.marbles) {
+      if (o === m || o.eliminated || o.finished || o.ghostUntil > race.t) continue;
+      const dx = o.x - m.x; const dy = o.y - m.y; const dz = o.z - m.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d > RACE.shockRadius || d < 1e-6) continue;
+      // Pushed away across the floor and popped up a little.
+      const fall = 1 - d / RACE.shockRadius;
+      const k = RACE.shockKick * (0.5 + fall * 0.5);
+      const along = dx * p.u[0] + dy * p.u[1] + dz * p.u[2];
+      const fx = dx - p.u[0] * along; const fy = dy - p.u[1] * along; const fz = dz - p.u[2] * along;
+      const fl = Math.hypot(fx, fy, fz) || 1;
+      o.vx += (fx / fl) * k + p.u[0] * 3; o.vy += (fy / fl) * k + p.u[1] * 3; o.vz += (fz / fl) * k + p.u[2] * 3;
+      // And slowed: a shockwave costs the ones it hits their momentum.
+      o.vx *= 0.7; o.vy *= 0.7; o.vz *= 0.7;
+      hits.push(o.id);
+    }
+    race.queue.push({ type: 'shock', id, hits });
+  }
+  race.queue.push({ type: 'use', id, item });
+  return item;
+}
+
+/**
+ * The computer racers: steer toward boost pads and boxes (when empty-handed),
+ * otherwise hold a lane; use power-ups after a moment's thought. `skill`
+ * scales how well they do both.
+ */
+function think(race, m, p, h) {
+  m.aiThink -= h;
+  if (m.aiThink > 0) return;
+  m.aiThink = 0.12;
+  const skill = race.skill;
+  const ahead = m.index + Math.round(24 / race.track.spacing);
+  let target = m.aiLane;
+  let found = false;
+  for (const o of race.boosts) {
+    if (o.from > m.index + 2 && o.from < ahead) {
+      target = (o.across[0] + o.across[1]) / 2;
+      found = true;
+      break;
+    }
+  }
+  if (!m.item && race.items) {
+    for (let i = m.index + 3; i < ahead && !found; i += 1) {
+      const list = race.buckets.get(i);
+      if (!list) continue;
+      let best = null;
+      for (const q of list) {
+        if (q.kind === 'box' && race.t >= q.back && (!best || Math.abs(q.lateral - m.lateral) < Math.abs(best.lateral - m.lateral))) best = q;
+      }
+      if (best) { target = best.lateral; found = true; }
+    }
+  }
+  if (race.random() < 0.03) m.aiLane = (race.random() * 2 - 1) * Math.max(0, p.half - 1.5) * 0.7;
+  target = Math.max(-p.half + 1, Math.min(p.half - 1, target));
+  const wobble = (race.random() - 0.5) * (1 - skill) * 1.2;
+  m.steer = Math.max(-1, Math.min(1, (target - m.lateral) * 0.7 + wobble)) * (0.35 + skill * 0.65);
+
+  if (m.item && m.autoItem !== false) {
+    if (m.aiUseAt === null) m.aiUseAt = race.t + (0.3 + race.random() * 2.2) * (1.7 - skill);
+    if (race.t >= m.aiUseAt) {
+      // A shockwave waits (a little) for someone to hit.
+      if (m.item === 'shock' && race.t < m.aiUseAt + 3) {
+        const near = race.marbles.some((o) => o !== m && !o.eliminated && !o.finished && Math.hypot(o.x - m.x, o.y - m.y, o.z - m.z) < RACE.shockRadius * 0.8);
+        if (!near) return;
+      }
+      useItem(race, m.id);
     }
   }
 }

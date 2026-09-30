@@ -1,3 +1,5 @@
+import './comic.css';
+
 /**
  * Comic-book pop-ups: starbursts, big outlined shout words and the flourish
  * that fires on a really good landing.

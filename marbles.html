@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="theme-color" content="#14123a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Marble Mayhem" />
+    <meta
+      name="description"
+      content="Race marbles down wild generated tracks: steer, grab power-ups, level up and collect 32 marbles."
+    />
+    <title>Marble Mayhem</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./marble-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./marble-icon-180.png" />
+  </head>
+  <body class="mm-page-body">
+    <div id="mm-app">
+      <canvas id="mm-canvas" aria-label="Marble race"></canvas>
+      <div class="mm-boot" id="mm-boot">
+        <div class="mm-boot__marble"></div>
+        <p>Marble Mayhem</p>
+      </div>
+    </div>
+    <noscript>
+      <p style="color:#fff;font:16px/1.5 system-ui;padding:2rem">Marble Mayhem needs JavaScript and WebGL.</p>
+    </noscript>
+    <script type="module" src="./src/marbles/main.js"></script>
+  </body>
+</html>

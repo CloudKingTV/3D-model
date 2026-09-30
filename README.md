@@ -133,53 +133,92 @@ so the board reads as tiny against things you already know the size of. A
 tilt-shift pass keeps a band in focus and softens the rest, which is what a
 macro lens does to something this small, and it tracks the board.
 
-## Marble race
+## Marble Mayhem
 
-**Marble race** in the garage's top bar opens a second game. Pick one of 24
-marbles — Ruby, Chrome, Galaxy, Lava, Earth, an eight-ball and the rest — and
-watch all 24 race down a marble run generated fresh for that race. The camera
-follows yours (or the leader, or the whole run), a live leaderboard shows the
-order, and the results end on a podium.
+A full marble racing game, reached from **Marble race** in the garage's top bar
+or on its own page, `marbles.html` — full screen, installable to a phone's home
+screen, and playable offline once loaded (a web app manifest, icons and a small
+service worker in `public/`). Every marble, world, sound and piece of music is
+generated on the device; nothing is downloaded.
 
-Every run is a new layout (`src/marbles/track.js`), stitched from modules:
-banked curves, a spiral, a pachinko-style peg field, pop bumpers that kick,
-a spinning paddle, a funnel, rolling waves, a split into two lanes, boost pads,
-a steep plunge, then the finish line and a catch basin. The generator rejects
-any layout that passes through itself, and any where some line down the chute
-— either edge or the middle — rises anywhere, because a rise is exactly a
-pocket a marble can come to rest in.
+**Racing.** Five leagues, each in its own world, unlocked by level:
+
+| League | Level | Entry | Racers | World |
+| --- | --- | --- | --- | --- |
+| Rookie Cup | 1 | free | 12 | Meadow — trees, blue sky |
+| Pro Circuit | 3 | 60 | 16 | Canyon — cacti, mesas, dusty sun |
+| Glacier Series | 6 | 180 | 16 | Glacier — snowy pines; ice rolls faster |
+| Neon Masters | 10 | 450 | 20 | Neon City — glowing towers and track, bloom |
+| Volcano Champions | 15 | 1,100 | 24 | Volcano — lava cracks glow in the ground |
+
+Press **Play**, pay the entry, and a lobby fills with rivals (computer racers
+with their own names, flags and levels) on a freshly generated track. You
+**steer** your marble with the ◀ ▶ pads (or A/D, arrows), roll through **❓
+boxes** for power-ups and tap the big button (or Space) to use them:
+
+- 🚀 **Turbo** — a burst of speed
+- 👻 **Ghost** — pass through other marbles
+- ⚡ **Shockwave** — blast nearby rivals away and slow them
+- 🦘 **Hop** — jump the pack or a peg field
+
+Boxes deal by position, like a kart racer: the back of the field gets turbos,
+the front gets defensive tricks. Rivals steer for boost pads and boxes and use
+their power-ups too, better in higher leagues. Coins lie in weaving lines along
+the open stretches. The camera still swipes, pinches and flies (below).
+
+**Two more ways to play.** **Party**: type in up to eight friends, a slot
+machine hands each a random marble, and everyone watches (names float over
+their marbles). **Predict**: back one marble in a pure-luck race for a payout if
+it wins or makes the podium.
+
+**Progress.** Winnings depend on your place and league; XP levels you up
+(coins every level, a capsule every fifth, leagues unlocking on the way).
+Three daily missions ("Hit 15 bumpers", "Use 5 power-ups", "Win a race"…) and a
+seven-day login calendar with a growing streak. The **collection** has 32
+marbles in four rarities, from Ruby and Cobalt to the glowing Plasma and the
+iridescent Hologram; the **shop** sells marbles, a daily deal at 40% off,
+capsules (random marble, duplicates refund coins) and seven trails that stream
+behind your marble. Everything is bought with coins won racing; there is no real
+money anywhere. Progress lives in `localStorage` under one key.
+
+**Feel.** Synthesised sound for everything — rolling that follows your speed,
+clacks, bumpers, coins, each power-up, countdown, fanfares, and an upbeat
+music loop — plus vibration on Android. Camera shake on knocks, a wider view and
+speed lines at turbo speed, shockwave rings, confetti at the line and on the
+results, counting-up rewards and level-up cards. Portrait-first layout with
+safe-area insets, a two-column home in landscape, and a frame-rate guard that
+drops glow, then resolution, then shadows on a struggling phone (or pick
+*Battery* in settings).
+
+**The run itself** (`src/marbles/track.js`) is stitched from modules: banked
+curves, a spiral, a pachinko-style peg field, pop bumpers that kick, a spinning
+paddle, a funnel, rolling waves, a split into two lanes, boost pads and a steep
+plunge. The generator rejects any layout that passes through itself, and any
+where some line down the chute — either edge or the middle — rises anywhere,
+because a rise is exactly a pocket a marble can come to rest in.
 
 The marbles really roll (`src/marbles/physics.js`): spheres against the run's
 own triangles through a spatial hash, against each other, against pegs,
 bumpers and the spinner, with gravity, a little rolling resistance and air
 drag, stepped at 200Hz so nothing tunnels. A marble that jumps the run is put
-back on it a little way behind.
-
-If anything is still on the run 30 seconds after the winner finishes, a wall
-of fire comes down the run from the start and burns whatever it catches, which
-ends the race. It is meant to be rare, and it is: across 40 simulated races
-(`npm run sim:marbles`) every marble but one rolled home on its own, and the
-fire was needed in one race. The test also pins a marble in place to check the
-fire does come for it and the race does end.
+back on it a little way behind. If anything is still on the run 30 seconds
+after the winner finishes, a wall of fire sweeps the run and burns whatever it
+catches. It is meant to be rare, and it is: `npm test` runs 16 plain races and
+10 league races with steering and power-ups, and none needed it.
 
 ### Race camera
 
-The 🎥 button cycles **Mine → Leader → Fly** (`src/marbles/cameraControls.js`).
+The 🎥 button cycles **your marble → the leader → free flight**
+(`src/marbles/cameraControls.js`).
 
 | | Phone | Desktop |
 | --- | --- | --- |
-| Mine / Leader: swing round, look behind | swipe | drag |
-| Mine / Leader: zoom | pinch | scroll |
+| Following: swing round, look behind | swipe | drag |
+| Following: zoom | pinch | scroll |
 | Fly: look around | drag | drag |
-| Fly: forward / back | pinch | scroll, W / S or arrows |
+| Fly: forward / back | pinch | scroll, W / S |
 | Fly: slide sideways, up / down | two-finger drag | A / D, Q / E (Shift is faster) |
-| Reset (chase view, or back over the whole run) | double-tap | double-click |
-
-The chase angle is kept relative to the run, so a view looking back at the
-pack stays that way through the bends. Flying starts from wherever the camera
-was and stays within reach of the run. On phones the picker, leaderboard and
-buttons tighten up, and the renderer drops resolution and then shadows if the
-frame rate sags.
+| Reset | double-tap | double-click |
 
 ## Trying it on your phone
 
@@ -210,7 +249,9 @@ is not permitted to make them:
    Settings → Environments → `github-pages` → Deployment branches.
 
 Then re-run the workflow from the Actions tab. The site lands at
-`https://cloudkingtv.github.io/3D-model/`.
+`https://cloudkingtv.github.io/3D-model/`, and Marble Mayhem at
+`https://cloudkingtv.github.io/3D-model/marbles.html` — open that on a phone and
+use *Add to Home Screen* to install it like an app.
 
 ## Running it locally
 
@@ -219,17 +260,18 @@ npm install
 npm run dev             # dev server at http://localhost:5173
 npm run build           # production build into dist/
 npm run preview         # serve the built site
-npm run build:artifact  # repackage the build as a Claude Artifact page
-npm test                # effects checks, the park simulation, 16 marble races
+npm run build:artifact  # repackage the build as Claude Artifact pages
+npm test                # effects, park simulation, progression rules, 26 marble races
 npm run sim             # just the park simulation (SEEDS=20 for a longer soak)
 npm run sim:marbles     # 40 simulated marble races, with the fire-wall stats
 ```
 
 Requires Node 20+. The only runtime dependency is [three.js](https://threejs.org).
 
-`build:artifact` writes `dist/artifact.html` — the same app with the document
-skeleton stripped, for hosts that supply their own. Publish it together with the
-two files in `dist/assets/` that it names.
+`build:artifact` writes `dist/artifact.html` (the studio) and
+`dist/artifact-marbles.html` (Marble Mayhem) — the same pages with the document
+skeleton stripped, for hosts that supply their own. Publish each together with
+the files in `dist/assets/` that it names.
 
 The app adapts to being embedded in a frame: breakpoints follow its own width
 rather than the viewport's, and the Share button hides itself, because a
@@ -239,6 +281,7 @@ cross-origin frame does not pass the URL hash its links depend on.
 
 ```
 index.html           markup shell — canvas, top bar, panel
+marbles.html         Marble Mayhem on its own page
 src/main.js          wiring: store <-> viewer <-> UI, sheet drag, share, snapshot
 src/styles.css       the whole UI, responsive down to small phones
 src/lib/geometry.js  deck surface maths, truck sweeps, wheel lathe
@@ -268,14 +311,26 @@ src/game/comic.js    comic starbursts and the big-landing flourish
 src/game/index.js    game loop, input and run lifecycle
 src/marbles/track.js    marble run generator: path, triangles, obstacles (pure)
 src/marbles/physics.js  marble physics, placings, respawns, the fire wall (pure)
-src/marbles/designs.js  the 24 marbles, drawn on canvases
-src/marbles/scene.js    sky, the run, obstacles, marbles, fire, race camera
+src/marbles/designs.js  the 32 marbles, drawn on canvases
+src/marbles/themes.js   the five worlds: sky, fog, ground, colours, scenery
+src/marbles/progression.js  coins, XP, leagues, missions, daily reward,
+                        shop, capsules and the save (pure)
+src/marbles/scene.js    world, the run, obstacles, coins and boxes, marbles,
+                        trails, power-up effects, fire, bloom, race camera
 src/marbles/cameraControls.js  swipe / pinch / fly controls for the race camera
-src/marbles/index.js    picker → countdown → race → results
-src/ui/marbleHud.js     picker, leaderboard, fire warnings, podium
+src/marbles/audio.js    synthesised sound effects, rolling, music; vibration
+src/marbles/ui/shell.js home, collection, shop, missions, profile, modals
+src/marbles/ui/race.js  lobby, party and predict set-up, race HUD, results
+src/marbles/marbles.css the game's whole look, mobile first
+src/marbles/index.js    Marble Mayhem: menus → lobby → race → rewards
+src/marbles/main.js     the standalone page (marbles.html)
+public/                 manifest, icons and service worker for installing
 test/effects.test.mjs  effects geometry and lifetimes, headless
 test/marbles.sim.mjs   whole races on generated tracks: finish rates, fire
-                       wall use, and a stuck marble the fire must clear
+                       wall use, a stuck marble the fire must clear, league
+                       races with steering and power-ups, each power-up
+test/progression.test.mjs  prizes, levels, missions, streaks, shop, capsules,
+                       saving and old saves
 test/park.sim.mjs      scripted lines round the park, plus random sessions
                        checked every step for any part of the board inside
                        anything

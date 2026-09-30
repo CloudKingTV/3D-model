@@ -8,6 +8,14 @@ export default defineConfig({
     target: 'es2020',
     outDir: 'dist',
     assetsDir: 'assets',
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      // Two pages: the fingerboard studio and Marble Mayhem on its own.
+      input: {
+        main: 'index.html',
+        marbles: 'marbles.html',
+      },
+    },
   },
   server: {
     port: 5173,

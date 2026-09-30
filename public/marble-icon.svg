@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%">
+      <stop offset="0" stop-color="#5a3ad0"/>
+      <stop offset="1" stop-color="#14123a"/>
+    </radialGradient>
+    <radialGradient id="m" cx="36%" cy="30%" r="70%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.12" stop-color="#ffd6f5"/>
+      <stop offset="0.45" stop-color="#ff5ad0"/>
+      <stop offset="0.8" stop-color="#8a2bff"/>
+      <stop offset="1" stop-color="#2a0e70"/>
+    </radialGradient>
+    <linearGradient id="swirl" x1="0" x2="1">
+      <stop offset="0" stop-color="#ffe066"/>
+      <stop offset="1" stop-color="#ff8a1f"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M40 400 Q256 300 472 380 L472 512 L40 512 Z" fill="#ff6a2b" opacity="0.9"/>
+  <path d="M40 430 Q256 340 472 410" stroke="#ffd23f" stroke-width="14" fill="none" stroke-dasharray="36 22"/>
+  <circle cx="256" cy="236" r="150" fill="url(#m)"/>
+  <path d="M130 250 C 190 190, 250 300, 320 220 S 390 200, 400 230" stroke="url(#swirl)" stroke-width="26" fill="none" stroke-linecap="round" opacity="0.9"/>
+  <ellipse cx="206" cy="170" rx="46" ry="26" fill="#fff" opacity="0.75" transform="rotate(-30 206 170)"/>
+</svg>

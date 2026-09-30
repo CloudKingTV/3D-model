@@ -1,0 +1,60 @@
+html,
+body.mm-page-body {
+  height: 100%;
+  margin: 0;
+  background: #14123a;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+#mm-app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, #3a2a8a, #14123a 70%);
+}
+
+#mm-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.mm-boot {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  color: #fff;
+  font: 900 22px ui-rounded, system-ui, sans-serif;
+}
+
+.mm-boot__marble {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0 8%, #ff8ad8 20%, #7a3cff 70%, #2a1070);
+  animation: mm-boot 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes mm-boot {
+  to { transform: translateY(-16px) rotate(180deg); }
+}
+
+.mm-fatal {
+  position: absolute;
+  inset: auto 16px 40% 16px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(10, 12, 40, 0.9);
+  color: #fff;
+  font: 800 16px/1.4 system-ui, sans-serif;
+  text-align: center;
+}

@@ -120,7 +120,7 @@ const POOL = ['straight', 'curve', 'curve', 'curve', 'spiral', 'pegs', 'bumpers'
 
 /* ------------------------------------------------------------ generate */
 
-function tryGenerate(seed) {
+function tryGenerate(seed, { length: range = [560, 740] } = {}) {
   const random = rng(seed);
   const samples = [];
   const obstacles = [];
@@ -270,7 +270,7 @@ function tryGenerate(seed) {
   const gateIndex = Math.round(10 / DS);
 
   let length = samples.length * DS;
-  const target = 560 + random() * 180;
+  const target = range[0] + random() * (range[1] - range[0]);
   let colour = 1;
   let last = 'start';
   const used = {};
@@ -297,7 +297,62 @@ function tryGenerate(seed) {
   emit({ name: 'runout', length: 18, slope: 3 * DEG, half: 7, wall: 4 }, 0);
 
   if (!validate(samples, gateIndex, finishIndex)) return null;
-  return build(seed, samples, obstacles, modules, gateIndex, finishIndex);
+  const built = build(seed, samples, obstacles, modules, gateIndex, finishIndex);
+  built.pickups = placePickups(samples, modules, random, floorPoint);
+  return built;
+}
+
+/**
+ * Coins and power-up boxes, on the open stretches only (never among pegs,
+ * bumpers or spinners). Coins come in weaving lines, boxes in rows across
+ * the chute every so often.
+ */
+const PICKUP_MODULES = new Set(['straight', 'curve', 'waves', 'funnel', 'plunge', 'spiral']);
+const BOX_MODULES = new Set(['straight', 'curve', 'waves', 'funnel']);
+
+function placePickups(samples, modules, random, floorPoint) {
+  const pickups = [];
+  const at = (index, lateral, kind) => {
+    const p = samples[index];
+    const base = floorPoint(p, lateral);
+    const lift = kind === 'box' ? 0.8 : 0.7;
+    pickups.push({
+      kind,
+      index,
+      lateral,
+      x: base[0] + p.u[0] * lift,
+      y: base[1] + p.u[1] * lift,
+      z: base[2] + p.u[2] * lift,
+    });
+  };
+  let lastBox = -Infinity;
+  for (const m of modules) {
+    if (!PICKUP_MODULES.has(m.name)) continue;
+    const span = m.end - m.start;
+    if (BOX_MODULES.has(m.name) && samples[m.start].s - lastBox > 90 && span > 20) {
+      const i = Math.round(m.start + span * 0.5);
+      const half = samples[i].half;
+      const lanes = half >= 4 ? [-half * 0.55, 0, half * 0.55] : [-half * 0.4, half * 0.4];
+      for (const lateral of lanes) at(i, lateral, 'box');
+      lastBox = samples[i].s;
+    }
+    if (random() < 0.85) {
+      const count = Math.min(9, Math.floor((span * DS * 0.55) / 2.25));
+      const start = Math.round(m.start + span * (BOX_MODULES.has(m.name) ? 0.12 : 0.2));
+      const lane = (random() * 2 - 1) * 0.5;
+      const phase = random() * Math.PI * 2;
+      for (let k = 0; k < count; k += 1) {
+        const i = start + k * 3;
+        if (i >= m.end - 2) break;
+        const half = samples[i].half;
+        const lateral = Math.max(-half + 1.3, Math.min(half - 1.3, (lane + Math.sin(phase + k * 0.55) * 0.35) * half));
+        // Keep clear of the box row.
+        if (pickups.some((q) => q.kind === 'box' && Math.abs(q.index - i) < 3)) continue;
+        at(i, lateral, 'coin');
+      }
+    }
+  }
+  return pickups;
 }
 
 /**
@@ -474,9 +529,9 @@ function build(seed, samples, obstacles, modules, gateIndex, finishIndex) {
 }
 
 /** A new track for `seed`. Retries internally until one does not overlap itself. */
-export function generateTrack(seed) {
+export function generateTrack(seed, options = {}) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const track = tryGenerate((seed * 7919 + attempt * 104729) >>> 0);
+    const track = tryGenerate((seed * 7919 + attempt * 104729) >>> 0, options);
     if (track) return track;
   }
   throw new Error('could not lay out a track');
