@@ -71,8 +71,12 @@ const TiltShiftShader = {
   `,
 };
 
-export function createTiltShift(renderer, scene, camera) {
-  const composer = new EffectComposer(renderer);
+export function createTiltShift(renderer, scene, camera, { lowPrecision = false } = {}) {
+  // Half-float targets are the default and cost phones dearly for a blur that
+  // 8 bits per channel does just as well.
+  const composer = lowPrecision
+    ? new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.UnsignedByteType }))
+    : new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
 
   const horizontal = new ShaderPass(TiltShiftShader);
@@ -84,11 +88,19 @@ export function createTiltShift(renderer, scene, camera) {
   composer.addPass(new OutputPass());
 
   const passes = [horizontal, vertical];
+  let enabled = true;
 
   return {
     composer,
     render() {
-      composer.render();
+      // Switched off, the scene goes straight to the screen: tone mapping and
+      // colour space are then applied by the renderer itself.
+      if (enabled) composer.render();
+      else renderer.render(scene, camera);
+    },
+    /** The last thing a struggling phone gives up. */
+    setEnabled(on) {
+      enabled = on;
     },
     setSize(width, height, pixelRatio) {
       composer.setSize(width, height);

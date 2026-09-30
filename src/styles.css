@@ -669,15 +669,16 @@ input[type='range']::-moz-range-thumb {
 
 .hud__exit {
   pointer-events: auto;
-  padding: 7px 13px;
+  padding: 9px 14px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
-  background: var(--surface);
+  /* Solid, not a backdrop blur: over a canvas that redraws every frame a
+     blur is recomputed every frame too, and phones cannot afford that. */
+  background: rgba(14, 17, 22, 0.78);
   border: 1px solid var(--line);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  touch-action: manipulation;
 }
 
 .hud__exit:hover {
@@ -685,9 +686,9 @@ input[type='range']::-moz-range-thumb {
 }
 
 .hud__combo {
-  position: absolute;
-  top: calc(112px + var(--safe-t));
-  left: calc(16px + var(--safe-l));
+  /* Stacked under the letters in the score column, so it can never overlap
+     them however large the score is set on a wide screen. */
+  margin-top: 2px;
   font-size: 13px;
   font-weight: 600;
   color: var(--accent);
@@ -835,10 +836,8 @@ input[type='range']::-moz-range-thumb {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.12));
-  border: 2px solid rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.3));
+  border: 2px solid rgba(255, 255, 255, 0.28);
 }
 
 .touch__knob {
@@ -898,10 +897,8 @@ input[type='range']::-moz-range-thumb {
   height: 58px;
   font-size: 11px;
   color: #fff;
-  background: rgba(20, 24, 32, 0.72);
+  background: rgba(20, 24, 32, 0.8);
   border: 2px solid rgba(255, 255, 255, 0.4);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Fanned round the ollie button, within reach of a right thumb. */
@@ -929,9 +926,7 @@ input[type='range']::-moz-range-thumb {
   display: grid;
   place-items: center;
   padding: calc(20px + var(--safe-t)) 20px calc(20px + var(--safe-b));
-  background: rgba(6, 8, 11, 0.72);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(6, 8, 11, 0.8);
 }
 
 .hud__overlay[hidden] {
@@ -1016,6 +1011,7 @@ input[type='range']::-moz-range-thumb {
 
 .hud__go,
 .hud__ghost {
+  touch-action: manipulation;
   width: 100%;
   padding: 13px;
   border-radius: var(--radius-sm);

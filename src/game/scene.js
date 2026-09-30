@@ -65,13 +65,33 @@ function shortestAngle(from, to) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
 }
 
+/**
+ * Rendering budgets, best first. A phone that cannot hold its frame rate
+ * steps down one at a time: resolution first, then shadow detail, then the
+ * tilt-shift blur, and last the shadow itself.
+ */
+const QUALITY_LEVELS = [
+  { ratio: 2, shadow: 2048, blur: true, shadows: true },
+  { ratio: 1.5, shadow: 1024, blur: true, shadows: true },
+  { ratio: 1.25, shadow: 1024, blur: true, shadows: true },
+  { ratio: 1, shadow: 512, blur: true, shadows: true },
+  { ratio: 0.85, shadow: 512, blur: false, shadows: true },
+  { ratio: 0.7, shadow: 512, blur: false, shadows: false },
+];
+
 export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', park }) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality === 'high' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality === 'high' ? 2 : 1.5));
+  const phone = quality !== 'high';
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: !phone,
+    powerPreference: 'high-performance',
+  });
+  let level = phone ? 2 : 0;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY_LEVELS[level].ratio));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   scene.background = createRoomBackdrop();
@@ -89,7 +109,7 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   // board, so the shadow camera follows the board round the park.
   const key = new THREE.DirectionalLight('#ffe6c4', 3.0);
   key.castShadow = true;
-  const shadowSize = quality === 'high' ? 2048 : 1024;
+  const shadowSize = QUALITY_LEVELS[level].shadow;
   key.shadow.mapSize.set(shadowSize, shadowSize);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 200;
@@ -331,13 +351,34 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   /* ------------------------------------------------------ post & resize */
 
   // Always on: the miniature illusion is the point, not a nicety.
-  const post = createTiltShift(renderer, scene, camera);
+  const post = createTiltShift(renderer, scene, camera, { lowPrecision: phone });
   // A deeper sharp band than the side view had: the chase camera looks down
   // the park, and the rider needs to read what is coming.
   post.setRange(0.16);
   const projected = new THREE.Vector3();
 
+  const size = { width: 1, height: 1 };
+
+  /** Step down to the next cheaper rendering budget. False at the bottom. */
+  function lowerQuality() {
+    if (level >= QUALITY_LEVELS.length - 1) return false;
+    level += 1;
+    const next = QUALITY_LEVELS[level];
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, next.ratio));
+    if (next.shadow !== key.shadow.mapSize.x) {
+      key.shadow.mapSize.set(next.shadow, next.shadow);
+      key.shadow.map?.dispose();
+      key.shadow.map = null;
+    }
+    key.castShadow = next.shadows;
+    post.setEnabled(next.blur);
+    resize(size.width, size.height);
+    return true;
+  }
+
   function resize(width, height) {
+    size.width = width;
+    size.height = height;
     renderer.setSize(width, height, false);
     const aspect = width / height;
     camera.aspect = aspect;
@@ -374,6 +415,10 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     pmrem.dispose();
     post.dispose();
     renderer.dispose();
+    // Give the GL context back now rather than whenever it is collected:
+    // phones allow only a few at once, and every trip into the park makes
+    // one. Left to pile up, the browser starts killing the garage's.
+    renderer.forceContextLoss();
   }
 
   return {
@@ -385,6 +430,10 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     poseBoard,
     updateCamera,
     animateLetters,
+    lowerQuality,
+    get qualityLevel() {
+      return level;
+    },
     resize,
     render,
     dispose,

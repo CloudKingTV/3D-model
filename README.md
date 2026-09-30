@@ -59,6 +59,16 @@ five letters S-K-A-T-E. Two-minute sessions; score as much as you can.
 - Every scoring landing or grind raises the multiplier; a bail resets it, and
   so do three seconds of just rolling.
 
+On phones the game is built to hold its frame rate rather than look its best:
+it starts at a moderate resolution, and if the typical frame takes longer
+than 25ms it steps down — resolution, then shadow detail, then the tilt-shift
+blur, then shadows — within a couple of seconds. Touch controls appear on any
+touch-first device (not only ones that report a coarse pointer), page
+scrolling and zooming are blocked while you play, the game pauses when the
+app is put away or the GPU context is lost, and every trip into the park
+releases its GL context on the way out, so going back and forth to the garage
+never runs a phone out of them.
+
 Landings are scored for what you did with them, and the noise matches: a comic
 starburst for an ordinary one, and for anything really good a full-panel
 flourish with radiating speed lines, a dip into slow motion and a camera lean.
@@ -144,6 +154,7 @@ src/ui/controls.js   small DOM builders (swatches, sliders, toggles, tiles)
 src/ui/panel.js      the customiser tabs
 src/ui/gameHud.js    score, timer, combo, letters and the game overlays
 src/ui/touchControls.js  the phone stick, ollie and trick buttons
+src/lib/device.js    is this a touch-first device
 src/game/park.js     the course: obstacle layout, heights, grind lines (pure)
 src/game/rider.js    3D board physics, tricks, grinds and scoring (pure)
 src/game/props.js    park meshes built from park.js, the desk and its clutter

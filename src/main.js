@@ -4,6 +4,7 @@ import { createGameHud } from './ui/gameHud.js';
 import { createViewer } from './lib/viewer.js';
 import { createPanel } from './ui/panel.js';
 import { el, ICONS } from './ui/controls.js';
+import { isTouchDevice } from './lib/device.js';
 import { BACKGROUNDS, rgba } from './lib/textures.js';
 
 const canvas = document.getElementById('viewport');
@@ -170,7 +171,20 @@ if (!EMBEDDED) {
 
 const garageStage = document.getElementById('stage-garage');
 const gameStage = document.getElementById('stage-game');
-const playfield = document.getElementById('playfield');
+let playfield = document.getElementById('playfield');
+
+/**
+ * Each trip into the park gets a new canvas. The old one's GL context is
+ * released on the way out, and a canvas whose context has been released can
+ * never make another, so it is replaced rather than reused.
+ */
+function freshPlayfield() {
+  const next = document.createElement('canvas');
+  next.id = 'playfield';
+  next.setAttribute('aria-label', 'Fingerboard game');
+  playfield.replaceWith(next);
+  playfield = next;
+}
 
 let game = null;
 let gameHud = null;
@@ -196,7 +210,7 @@ function enterGame() {
     hud: gameHud,
     comicHost: gameStage,
     // Phones get lighter shadows and no MSAA; the tilt-shift stays either way.
-    quality: matchMedia('(pointer: coarse)').matches ? 'low' : 'high',
+    quality: isTouchDevice() ? 'low' : 'high',
   });
   sizeGame();
 }
@@ -209,6 +223,7 @@ function exitGame() {
   gameHud = null;
   gameStage.innerHTML = '';
   gameStage.append(playfield);
+  freshPlayfield();
   gameStage.hidden = true;
   garageStage.hidden = false;
   viewer.resume();
@@ -291,7 +306,7 @@ function dismissHint() {
   hint.dataset.hidden = 'true';
 }
 
-hint.textContent = matchMedia('(pointer: coarse)').matches
+hint.textContent = isTouchDevice()
   ? 'Drag to spin · pinch to zoom'
   : 'Drag to spin · scroll to zoom';
 setTimeout(dismissHint, 6500);

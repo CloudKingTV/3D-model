@@ -1,4 +1,5 @@
 import { el } from './controls.js';
+import { isTouchDevice } from '../lib/device.js';
 
 /**
  * The game's on-screen furniture: score, timer, combo, charge meter and the
@@ -6,7 +7,7 @@ import { el } from './controls.js';
  * canvas so it stays crisp and readable at any pixel ratio.
  */
 export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S', 'K', 'A', 'T', 'E'] }) {
-  const coarse = matchMedia('(pointer: coarse)').matches;
+  const coarse = isTouchDevice();
 
   const score = el('div', { class: 'hud__score', text: '0' });
   const best = el('div', { class: 'hud__best', text: 'Best 0' });
@@ -22,7 +23,7 @@ export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S'
 
   host.append(
     el('div', { class: 'hud' }, [
-      el('div', { class: 'hud__corner hud__corner--left' }, [score, best, letterRow]),
+      el('div', { class: 'hud__corner hud__corner--left' }, [score, best, letterRow, combo]),
       el('div', { class: 'hud__corner hud__corner--right' }, [
         time,
         el('div', { class: 'hud__buttons' }, [
@@ -30,7 +31,6 @@ export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S'
           el('button', { class: 'hud__exit', type: 'button', text: 'Garage', onclick: onExit }),
         ]),
       ]),
-      combo,
       flash,
       charge,
     ]),
@@ -38,6 +38,14 @@ export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S'
   );
 
   let flashTimer = 0;
+  // Written every frame, so only touch the DOM when something changed:
+  // needless text and style writes cost phones real frame time.
+  const shown = {};
+  const changed = (key, value) => {
+    if (shown[key] === value) return false;
+    shown[key] = value;
+    return true;
+  };
 
   function panel(children) {
     overlay.innerHTML = '';
@@ -68,21 +76,25 @@ export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S'
 
   return {
     setScore(value) {
-      score.textContent = Math.round(value).toLocaleString();
+      const text = Math.round(value).toLocaleString();
+      if (changed('score', text)) score.textContent = text;
     },
     setBest(value) {
       best.textContent = `Best ${Math.round(value).toLocaleString()}`;
     },
     setTime(seconds) {
       const whole = Math.ceil(seconds);
+      if (!changed('time', whole)) return;
       time.textContent = `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
       time.dataset.low = String(seconds <= 10);
     },
     setCombo(count, multiplier) {
+      if (!changed('combo', `${count}:${multiplier}`)) return;
       combo.dataset.show = String(count > 0);
       combo.textContent = `${multiplier.toFixed(1)}×  ·  ${count} combo`;
     },
     setCharge(value) {
+      if (!changed('charge', Math.round(value * 50))) return;
       charge.dataset.show = String(value > 0.01);
       chargeFill.style.transform = `scaleX(${value})`;
     },

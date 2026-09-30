@@ -4,6 +4,7 @@ import { createGameScene } from './scene.js';
 import { createComicPops } from './comic.js';
 import { createTouchControls } from '../ui/touchControls.js';
 import { noseLiftFor } from '../lib/geometry.js';
+import { isTouchDevice } from '../lib/device.js';
 
 const STEP = 1 / 120; // fixed physics step, independent of frame rate
 const RUN_SECONDS = 120;
@@ -78,7 +79,7 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
     },
   });
   // Touch controls on phones, or as soon as anyone touches the screen.
-  touch.setVisible(matchMedia('(pointer: coarse)').matches);
+  touch.setVisible(isTouchDevice());
   const onFirstTouch = (event) => {
     if (event.pointerType === 'touch') touch.setVisible(true);
   };
@@ -122,10 +123,29 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
     keys.delete(event.code);
   }
 
-  function onBlur() {
+  // Pause when the page is really put away — app switched, screen locked —
+  // not on every focus change, which inside an embedded frame can happen
+  // without the player doing anything.
+  function onVisibility() {
     keys.clear();
-    if (status === 'playing') togglePause();
+    if (document.hidden && status === 'playing') togglePause();
   }
+
+  // Keep a drag on the controls from scrolling, zooming or pulling the page
+  // (or the app the game is embedded in) out from under the player.
+  const stopGesture = (event) => {
+    if (event.target.closest?.('.hud__panel')) return; // the menus may scroll
+    event.preventDefault();
+  };
+  host.addEventListener('touchmove', stopGesture, { passive: false });
+
+  // Phones drop the GPU context when memory runs short or the app is
+  // backgrounded. Ask for it back, and pause until it comes.
+  const onContextLost = (event) => {
+    event.preventDefault();
+    if (status === 'playing') togglePause();
+  };
+  canvas.addEventListener('webglcontextlost', onContextLost);
 
   const held = (set) => [...set].some((code) => keys.has(code));
 
@@ -144,7 +164,7 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
 
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-  window.addEventListener('blur', onBlur);
+  document.addEventListener('visibilitychange', onVisibility);
 
   /* -------------------------------------------------------------- loop */
 
@@ -242,12 +262,42 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
     }
   }
 
+  /*
+   * Frame-rate guard. Every 1.5s of real time, if the typical frame took
+   * longer than 25ms (under 40fps), render more cheaply — two steps at once
+   * if it is really crawling. Judged by time, not frame count, so a phone
+   * managing 5fps is helped within seconds. The median ignores one-off
+   * hitches like shader compiles; the first second is skipped.
+   */
+  const frameTimes = [];
+  let windowStart = 0;
+  let settleUntil = 0;
+  function watchFrameRate(now, raw) {
+    if (now < settleUntil || status === 'paused' || raw <= 0 || raw > 400) return;
+    if (!frameTimes.length) windowStart = now;
+    frameTimes.push(raw);
+    if (now - windowStart < 1500 || frameTimes.length < 6) return;
+    const sorted = [...frameTimes].sort((a, b) => a - b);
+    const median = sorted[sorted.length >> 1];
+    frameTimes.length = 0;
+    if (median <= 25) return;
+    let lowered = view.lowerQuality();
+    if (lowered && median > 60) view.lowerQuality();
+    if (lowered) {
+      settleUntil = now + 800;
+      canvas.dataset.quality = String(view.qualityLevel);
+    }
+  }
+
   function frame(now) {
     if (!running) return;
     frameHandle = requestAnimationFrame(frame);
 
-    const delta = last ? Math.min(0.06, (now - last) / 1000) : 0;
+    const raw = last ? now - last : 0;
+    const delta = Math.min(0.06, raw / 1000);
     last = now;
+    if (!settleUntil) settleUntil = now + 1000;
+    watchFrameRate(now, raw);
 
     if (status === 'playing') {
       let scale = 1;
@@ -336,12 +386,17 @@ export function createGame(canvas, { config, hud, comicHost, quality = 'high' })
     get rider() {
       return rider;
     },
+    get qualityLevel() {
+      return view.qualityLevel;
+    },
     dispose() {
       running = false;
       cancelAnimationFrame(frameHandle);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onVisibility);
+      host.removeEventListener('touchmove', stopGesture);
+      canvas.removeEventListener('webglcontextlost', onContextLost);
       window.removeEventListener('pointerdown', onFirstTouch);
       touch.dispose();
       comic.dispose();
