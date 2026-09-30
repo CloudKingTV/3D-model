@@ -167,8 +167,9 @@ their power-ups too, better in higher leagues. Coins lie in weaving lines along
 the open stretches. The camera still swipes, pinches and flies (below).
 
 **Two more ways to play.** **Party**: type in up to eight friends, a slot
-machine hands each a random marble, and everyone watches (names float over
-their marbles). **Predict**: back one marble in a pure-luck race for a payout if
+machine hands each a random marble, and only those marbles race — two
+players, two marbles — while everyone watches (names float over their
+marbles). **Predict**: back one marble in a pure-luck race for a payout if
 it wins or makes the podium.
 
 **Progress.** Winnings depend on your place and league; XP levels you up

@@ -114,7 +114,7 @@ export function createRaceUi(host, app) {
     const add = h('button.mm-btn.mm-btn--ghost.mm-btn--small', { type: 'button', onclick: tap(() => { names.push(`Player ${names.length + 1}`); draw(); }) }, '+ Add player');
     root.append(h('div.mm-panel', {}, [
       h('h2', { text: '🎉 Party race' }),
-      h('p.mm-sub', { text: 'Everyone gets a random marble. Pass the phone round, then watch it play out.' }),
+      h('p.mm-sub', { text: 'Everyone gets a random marble, and only your marbles race. Pass the phone round, then watch it play out.' }),
       list,
       add,
       h('div.mm-row', {}, [
@@ -392,7 +392,8 @@ export function createRaceUi(host, app) {
       ]);
     }));
 
-    const place = me?.eliminated ? '🔥' : me ? ordinal(mine + 1) : '';
+    // A party has no "you": the trophy goes to whoever won.
+    const place = mode === 'party' ? '🏆' : me?.eliminated ? '🔥' : me ? ordinal(mine + 1) : '';
     const rewards = h('div.mm-rewards');
     const xpBar = h('div.mm-progress.mm-progress--xp', {}, h('i'));
     const xpText = h('small');

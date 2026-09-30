@@ -199,12 +199,8 @@ export function createMarbleGame(canvas, { host, quality = 'high', onExit = null
         profile.commit();
         const random = seeded((Math.random() * 1e9) >>> 0);
         const designs = shuffledDesigns([], random);
-        const count = Math.max(12, names.length);
-        const field = [];
-        for (let i = 0; i < count; i += 1) {
-          const design = designs[i];
-          field.push(i < names.length ? { design, name: names[i], human: true } : { design, name: MARBLES[design].name });
-        }
+        // Only the players' own marbles race: two players, two marbles.
+        const field = names.map((name, i) => ({ design: designs[i], name, human: true }));
         session = { mode: 'party', field, playerId: 0, before: { xp: save().xp } };
         ui.partyReveal({
           field,
