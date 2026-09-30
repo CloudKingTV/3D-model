@@ -189,6 +189,7 @@ function enterGame() {
   gameHud = createGameHud(gameStage, {
     onExit: exitGame,
     onRestart: () => game?.restart(),
+    onPause: () => game?.togglePause(),
   });
   game = createGame(playfield, {
     config: store.config,

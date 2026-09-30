@@ -10,9 +10,8 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "build:artifact": "VITE_BASE=./ vite build && node scripts/build-artifact.mjs",
-    "test": "node test/effects.test.mjs",
-    "sim": "node test/run.sim.mjs",
-    "sim:clip": "node test/clipping.sim.mjs"
+    "test": "node test/effects.test.mjs && node test/park.sim.mjs",
+    "sim": "node test/park.sim.mjs"
   },
   "devDependencies": {
     "vite": "^8.3.0"

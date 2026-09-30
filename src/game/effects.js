@@ -83,18 +83,23 @@ export function createEffects(scene, { accent = '#ff5722' } = {}) {
   const accentColor = new THREE.Color(accent);
   const scratch = new THREE.Color();
 
-  /** A continuous shower off a grind, thrown backwards along the rail. */
-  function grindSparks(x, y, z, dt, speed) {
+  /**
+   * A continuous shower off a grind, thrown backwards along the rail.
+   * (dirX, dirZ) is the direction of travel in plan.
+   */
+  function grindSparks(x, y, z, dt, speed, dirX = 1, dirZ = 0) {
     const count = Math.min(6, Math.round(dt * 150));
     for (let i = 0; i < count; i += 1) {
       scratch.copy(Math.random() > 0.45 ? hot : ember);
+      const back = -speed * (0.25 + Math.random() * 0.5);
+      const side = (Math.random() - 0.5) * 22;
       spawnSpark(
         x + (Math.random() - 0.5) * 1.2,
         y + 0.1,
         z + (Math.random() - 0.5) * 1.0,
-        -speed * (0.25 + Math.random() * 0.5),
+        dirX * back - dirZ * side,
         Math.random() * 26 + 6,
-        (Math.random() - 0.5) * 22,
+        dirZ * back + dirX * side,
         0.24 + Math.random() * 0.3,
         scratch,
       );

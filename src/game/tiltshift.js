@@ -103,6 +103,10 @@ export function createTiltShift(renderer, scene, camera) {
         pass.uniforms.uFocus.value = THREE.MathUtils.clamp(screenY, 0.15, 0.85);
       }
     },
+    /** Half-height of the fully sharp band, in screen fractions. */
+    setRange(range) {
+      for (const pass of passes) pass.uniforms.uRange.value = range;
+    },
     setStrength(strength) {
       for (const pass of passes) pass.uniforms.uStrength.value = strength;
     },

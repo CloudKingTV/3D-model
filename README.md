@@ -32,33 +32,49 @@ download: the deck, trucks, wheels and every graphic are generated in code.
 
 ## The game
 
-**Skate it** in the top bar drops the board you just built into a park laid out
-on a desk. Ninety seconds, score as much as you can.
+**Skate it** in the top bar drops the board you just built into a 3D
+fingerboard park on a desk, seen from behind in third person. Roll anywhere:
+air the quarter pipes, grind the rails and ledges, drop the stairs and find the
+five letters S-K-A-T-E. Two-minute sessions; score as much as you can.
 
-- **Hold** to crouch, **release** to pop. Longer hold, bigger ollie.
-- **A / D** (or swipe left / right) kickflip and heelflip.
-- **S / W** (or swipe down / up) pop shuv and 360 shuv.
-- A flip and a shuv thrown together make a varial — they turn on separate axes,
-  so both land in one air.
-- Land on a rail or a ledge to grind it. Both are solid: roll into one and you
-  bail, so ollie onto it. Every clean landing raises the multiplier; a bail
-  resets it.
+| | Keyboard | Phone |
+|---|---|---|
+| Push / brake | W / S (or ↑ / ↓) | left stick up / down |
+| Steer | A / D (or ← / →) | left stick left / right |
+| Ollie | hold Space to crouch, let go to pop | hold **Ollie**, let go |
+| Kickflip · Shuv · Heelflip · 360 flip | J · K · L · I | the trick buttons |
+| Spin 180s and 360s | A / D in the air | left stick in the air |
+| Pause | P or Esc | Pause |
+
+- A trick pressed while rolling ollies and throws it in one go; pressed in the
+  air it throws it mid-air. A flip and a shuv together make a varial.
+- Land on a rail, a ledge edge or the coping with the board along it for a
+  50-50, or turned across it for a boardslide (a lipslide on a ledge). Pop out
+  of a grind any time; it hops you off to the low side.
+- Ride straight up a quarter pipe and you launch vertically and come back down
+  into it, riding away fakie. Carve along it for an air that travels.
+- Walls are walls: glance off one and you deflect, ride into one square at
+  speed and you slam. Land with the board sideways, mid-flip or straddling an
+  edge and you bail.
+- Every scoring landing or grind raises the multiplier; a bail resets it, and
+  so do three seconds of just rolling.
 
 Landings are scored for what you did with them, and the noise matches: a comic
 starburst for an ordinary one, and for anything really good a full-panel
 flourish with radiating speed lines, a dip into slow motion and a camera lean.
-Flips draw a trail off the nose of the board, grinds throw sparks off the rail,
-and every landing kicks up an impact ring.
+Flips draw a trail off the nose of the board, grinds throw sparks back along
+the rail, and every landing kicks up an impact ring.
 
-The park is endless and generated from a seed: flats, kickers, quarter pipes
-with coping, funboxes, concrete ledges, flat bars and gaps, getting bolder the
-further you get.
+The park: quarter pipes at both ends with steel coping, a funbox with
+grindable sides, a long concrete ledge, a flat bar, a manual pad, two kickers,
+and a platform with a bank up one side and a stair set with a handrail down
+the other, all inside a low wooden lip.
 
-Scale is the point. The deck is 96mm, the table is 700mm deep, the mug beside
-the run is 85mm across and the pencil is 175mm long — real sizes, so the board
-reads as tiny against things you already know the size of. A tilt-shift pass
-keeps a narrow band in focus and blurs the rest, which is what a macro lens
-does to something this small, and it tracks the board around the frame.
+Scale is the point. The deck is 96mm, the park's base board is 2.4m x 1.6m, the
+quarter pipes are 90mm tall and the mug on the desk beside the park is 95mm —
+real sizes, so the board reads as tiny against things you already know the
+size of. A tilt-shift pass keeps a band in focus and blurs the rest, which is
+what a macro lens does to something this small, and it tracks the board.
 
 ## Trying it on your phone
 
@@ -99,9 +115,8 @@ npm run dev             # dev server at http://localhost:5173
 npm run build           # production build into dist/
 npm run preview         # serve the built site
 npm run build:artifact  # repackage the build as a Claude Artifact page
-npm test                # headless checks for the game's effects
-npm run sim             # simulate scripted runs and print the score spread
-npm run sim:clip        # count physics steps the board spends inside anything
+npm test                # effects checks, then the park physics simulation
+npm run sim             # just the park simulation (SEEDS=20 for a longer soak)
 ```
 
 Requires Node 20+. The only runtime dependency is [three.js](https://threejs.org).
@@ -127,33 +142,39 @@ src/lib/viewer.js    renderer, lighting, orbit controls, camera framing
 src/lib/state.js     config store, presets, localStorage and share links
 src/ui/controls.js   small DOM builders (swatches, sliders, toggles, tiles)
 src/ui/panel.js      the customiser tabs
-src/ui/gameHud.js    score, timer, combo and the game overlays
-src/game/track.js    procedural park: features and surface queries (pure)
-src/game/skater.js   physics, trick state machine and scoring (pure)
-src/game/props.js    table, ramps, rails and the desk clutter
-src/game/scene.js    game scene, camera follow, feature recycling
+src/ui/gameHud.js    score, timer, combo, letters and the game overlays
+src/ui/touchControls.js  the phone stick, ollie and trick buttons
+src/game/park.js     the course: obstacle layout, heights, grind lines (pure)
+src/game/rider.js    3D board physics, tricks, grinds and scoring (pure)
+src/game/props.js    park meshes built from park.js, the desk and its clutter
+src/game/scene.js    game scene, board pose, third-person chase camera
 src/game/tiltshift.js the miniature-faking blur
 src/game/effects.js  sparks, flip trails, impact rings, screen shake
 src/game/comic.js    comic starbursts and the big-landing flourish
 src/game/index.js    game loop, input and run lifecycle
 test/effects.test.mjs  effects geometry and lifetimes, headless
-test/run.sim.mjs       simulated runs used to tune scoring
-test/clipping.sim.mjs  clip detector: time spent inside solid geometry
+test/park.sim.mjs      scripted lines round the park, plus random sessions
+                       checked every step for any part of the board inside
+                       anything
 ```
 
-Two details worth knowing if you want to extend it:
+Details worth knowing if you want to extend it:
 
-- **Collision** treats the board as a rigid plank. It rests on the lowest line
-  that clears all five contact points (both wheels, the middle, and the nose
-  and tail tips at their real kick height, measured from the deck geometry by
-  `noseLiftFor(spec)`), so a tail still hanging over a rail keeps the board on
-  it. In the air the path travelled each step is swept in short sub-steps:
-  square faces first, then landing on first contact, then the table edge. The
-  ramp meshes and the physics read the same profile functions in `track.js`,
-  so what you see is exactly what the board collides with. Bails move the
-  board too, and are clamped against the same geometry.
-  `npm run sim:clip` drives whole runs with several input styles, seeds and
-  extreme board shapes and fails if any step has part of the board inside
+- **The park is one description.** Each obstacle in `LAYOUT` (`park.js`) is a
+  box, wedge, quarter pipe, stairs or rail with its own position and turn, and
+  `heightAt(x, z)` answers from exactly the same profile functions that
+  `props.js` samples to build the meshes. What you see is what the board rides.
+- **Collision** treats the board as a rigid plank with contact points across
+  its wheels, trucks, belly, nose and tail — spaced tighter than a rail is
+  wide. It rests on the upper hull of those points over its middle, so it sits
+  on its wheels on flat, spans a transition, balances on its belly over a lip
+  and stays level with its front wheels past an edge until the middle goes
+  over. A face is anything that rises faster than a slope can between samples
+  0.2 apart; faces are walls, found by sweeping every contact point along the
+  path each step, turns included. In the air the board is tested exactly as
+  posed, so it cannot tilt itself round an edge it is about to hit.
+  `npm test` rides scripted lines and 12 random 90-second sessions across
+  three board shapes and fails if any step has part of the board inside
   anything.
 - **Deck geometry** is a parametric surface. `deckKick(x, spec)` gives the
   centre-line height and `deckHalfWidth(x, spec)` the outline; the solid is that

@@ -5,12 +5,14 @@ import { el } from './controls.js';
  * start / pause / game-over overlays. Kept as DOM rather than drawn into the
  * canvas so it stays crisp and readable at any pixel ratio.
  */
-export function createGameHud(host, { onExit, onRestart }) {
+export function createGameHud(host, { onExit, onRestart, onPause, letters = ['S', 'K', 'A', 'T', 'E'] }) {
   const coarse = matchMedia('(pointer: coarse)').matches;
 
   const score = el('div', { class: 'hud__score', text: '0' });
   const best = el('div', { class: 'hud__best', text: 'Best 0' });
-  const time = el('div', { class: 'hud__time', text: '1:30' });
+  const time = el('div', { class: 'hud__time', text: '2:00' });
+  const letterSlots = letters.map((letter) => el('span', { class: 'hud__letter', text: letter }));
+  const letterRow = el('div', { class: 'hud__letters', 'aria-label': 'Letters collected' }, letterSlots);
   const combo = el('div', { class: 'hud__combo', 'data-show': 'false' });
   const flash = el('div', { class: 'hud__flash' });
   const chargeFill = el('i', { class: 'hud__chargefill' });
@@ -20,10 +22,13 @@ export function createGameHud(host, { onExit, onRestart }) {
 
   host.append(
     el('div', { class: 'hud' }, [
-      el('div', { class: 'hud__corner hud__corner--left' }, [score, best]),
+      el('div', { class: 'hud__corner hud__corner--left' }, [score, best, letterRow]),
       el('div', { class: 'hud__corner hud__corner--right' }, [
         time,
-        el('button', { class: 'hud__exit', type: 'button', text: 'Garage', onclick: onExit }),
+        el('div', { class: 'hud__buttons' }, [
+          el('button', { class: 'hud__exit', type: 'button', text: 'Pause', onclick: () => onPause?.() }),
+          el('button', { class: 'hud__exit', type: 'button', text: 'Garage', onclick: onExit }),
+        ]),
       ]),
       combo,
       flash,
@@ -42,16 +47,16 @@ export function createGameHud(host, { onExit, onRestart }) {
 
   const controlHint = coarse
     ? [
-      ['Hold', 'crouch — longer hold, bigger ollie'],
-      ['Release', 'pop'],
-      ['Swipe ←  →', 'kickflip / heelflip'],
-      ['Swipe ↓  ↑', 'pop shuv / 360 shuv'],
+      ['Left stick', 'steer · up to push · down to brake'],
+      ['Hold Ollie', 'crouch — let go to pop, longer hold, higher'],
+      ['Trick buttons', 'flip it — on the ground they ollie too'],
+      ['Stick in the air', 'spin 180s and 360s'],
     ]
     : [
-      ['Hold Space', 'crouch — longer hold, bigger ollie'],
-      ['Release', 'pop'],
-      ['A / D', 'kickflip / heelflip'],
-      ['S / W', 'pop shuv / 360 shuv'],
+      ['W / ↑', 'push · S / ↓ brake'],
+      ['A D / ← →', 'steer — in the air, spin'],
+      ['Hold Space', 'crouch — let go to pop, longer hold, higher'],
+      ['J  K  L  I', 'kickflip · shuv · heelflip · 360 flip'],
     ];
 
   function hintList() {
@@ -97,16 +102,19 @@ export function createGameHud(host, { onExit, onRestart }) {
       clearTimeout(flashTimer);
       flashTimer = setTimeout(() => { flash.dataset.show = 'false'; }, 1100);
     },
+    setLetters(collected) {
+      letterSlots.forEach((slot, i) => { slot.dataset.got = String(collected.includes(i)); });
+    },
     showStart() {
       panel([
-        el('p', { class: 'hud__eyebrow', text: '90 seconds' }),
+        el('p', { class: 'hud__eyebrow', text: '2 minute session' }),
         el('h2', { text: 'Fingerboard Park' }),
-        el('p', { class: 'hud__lead', text: 'Grind the rails, launch the transitions, land clean. Every landing without a bail raises your multiplier.' }),
+        el('p', { class: 'hud__lead', text: 'Roam the park: air the quarter pipes, grind the rails and ledges, drop the stairs, and find the letters S-K-A-T-E. Keep landing tricks to build your multiplier.' }),
         hintList(),
         el('button', {
           class: 'hud__go',
           type: 'button',
-          text: coarse ? 'Tap to drop in' : 'Press Space to drop in',
+          text: coarse ? 'Drop in' : 'Drop in (Space)',
           onclick: onRestart,
         }),
       ]);
@@ -115,7 +123,12 @@ export function createGameHud(host, { onExit, onRestart }) {
       panel([
         el('h2', { text: 'Paused' }),
         hintList(),
-        el('p', { class: 'hud__lead', text: 'Press P to carry on.' }),
+        el('button', {
+          class: 'hud__go',
+          type: 'button',
+          text: coarse ? 'Carry on' : 'Carry on (P)',
+          onclick: () => onPause?.(),
+        }),
       ]);
     },
     showGameOver(finalScore, bestScore, isBest) {

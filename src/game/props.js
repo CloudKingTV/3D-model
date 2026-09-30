@@ -1,6 +1,15 @@
 import * as THREE from 'three';
 import { shade, rgba } from '../lib/textures.js';
-import { kickerHeight, quarterHeight, funboxHeight, RAIL_RADIUS } from './track.js';
+import {
+  TABLE,
+  DESK,
+  FLOOR_Y,
+  RAIL_RADIUS,
+  quarterRun,
+  quarterProfile,
+  wedgeProfile,
+  stairsProfile,
+} from './park.js';
 
 /**
  * Every object in the park, built in code. Nothing here is downloaded.
@@ -11,9 +20,6 @@ import { kickerHeight, quarterHeight, funboxHeight, RAIL_RADIUS } from './track.
  * tiny, because a viewer already knows how big those things are.
  */
 
-const RAMP_WIDTH = 15; // 150mm, a realistic fingerboard obstacle
-export const TABLE_DEPTH = 72;
-export const TABLE_THICKNESS = 2.6;
 
 function rng(seed) {
   let a = seed >>> 0;
@@ -141,16 +147,16 @@ export function createConcreteTexture() {
       ctx.lineTo(random() * w, random() * h);
       ctx.stroke();
     }
-  }, { repeat: [3, 3] });
+  }, { repeat: [0.08, 0.08] });
 }
 
 /* ------------------------------------------------------------ obstacles */
 
 /**
- * Extrude a 2D side profile across the ramp's width.
+ * Extrude a side profile (u along the obstacle, height up) across its width.
  *
- * No bevel: ExtrudeGeometry's bevel grows the outline outward, which lifted
- * every riding surface 0.12 above where the physics had the wheels.
+ * No bevel: ExtrudeGeometry's bevel grows the outline outward, which would
+ * lift every riding surface above where the physics has the wheels.
  */
 function extrudeProfile(points, width, material) {
   const shape = new THREE.Shape();
@@ -160,125 +166,124 @@ function extrudeProfile(points, width, material) {
 
   const geometry = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
   geometry.translate(0, 0, -width / 2);
-  const mesh = new THREE.Mesh(geometry, material);
+  const mesh = new THREE.Mesh(worldUV(geometry), material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
 }
 
 /**
- * Sample a riding surface from the same function the physics uses, closed off
- * underneath. Nothing about a ramp's shape is decided here, so the mesh cannot
- * drift from what the board actually rides on.
+ * UVs in world units, projected along each face's normal, so a texture's
+ * grain is the same size on a kicker, a ledge and a quarter pipe. (The
+ * geometry's own UVs stretch 0..1 over every face whatever its size.)
  */
-function sampleProfile(length, heightAt, steps, corners = []) {
-  // Hit any sharp corners exactly; uniform samples would cut across them.
-  const xs = new Set(corners);
-  for (let i = 1; i <= steps; i += 1) xs.add((i / steps) * length);
-  const points = [[0, 0]];
-  for (const x of [...xs].sort((a, b) => a - b)) points.push([x, heightAt(x)]);
-  points.push([length, 0]);
-  return points;
+function worldUV(geometry) {
+  const position = geometry.attributes.position;
+  const normal = geometry.attributes.normal;
+  const uv = geometry.attributes.uv;
+  for (let i = 0; i < position.count; i += 1) {
+    const nx = Math.abs(normal.getX(i));
+    const ny = Math.abs(normal.getY(i));
+    const nz = Math.abs(normal.getZ(i));
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    if (nz >= nx && nz >= ny) uv.setXY(i, x, y);
+    else if (nx >= ny) uv.setXY(i, z, y);
+    else uv.setXY(i, x, z);
+  }
+  uv.needsUpdate = true;
+  return geometry;
 }
 
-const kickerProfile = (f) => sampleProfile(f.length, (x) => kickerHeight(x / f.length, f.height), 24);
-const quarterProfile = (f) => sampleProfile(f.length, (x) => quarterHeight(x / f.length, f.height), 32);
-const funboxProfile = (f) => sampleProfile(
-  f.length,
-  (x) => funboxHeight(x, f),
-  40,
-  [f.rampLength, f.length - f.rampLength],
-);
+function box(width, height, depth, material) {
+  const mesh = new THREE.Mesh(worldUV(new THREE.BoxGeometry(width, height, depth)), material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/** Steel angle along a grindable top edge, flush with the faces it caps. */
+function edging(length, height, material) {
+  const size = 0.36;
+  const strip = box(length + 0.02, size, size, material);
+  strip.position.y = height - size / 2 + 0.01;
+  return strip;
+}
 
 /**
- * Build the mesh for one track feature, positioned in its own local space with
- * the feature starting at x = 0.
+ * The mesh for one park obstacle, in its own local frame: x along the
+ * obstacle (the physics' u) and z across it (w). Every surface is sampled
+ * from the profile functions the physics uses, so nothing drawn here can
+ * disagree with what the board rides on.
  */
-export function createFeatureMesh(feature, materials) {
+function buildItem(item, materials) {
   const group = new THREE.Group();
+  const surface = materials[item.material] ?? materials.ramp;
 
-  switch (feature.kind) {
-    case 'kicker':
-      group.add(extrudeProfile(kickerProfile(feature), RAMP_WIDTH, materials.ramp));
+  switch (item.kind) {
+    case 'box': {
+      const block = box(item.len, item.height, item.wid, surface);
+      block.position.y = item.height / 2;
+      group.add(block);
+      for (const edge of item.grind ?? []) {
+        const sign = edge[1] === '+' ? 1 : -1;
+        const along = edge[0] === 'w';
+        const strip = edging(along ? item.len : item.wid, item.height, materials.metal);
+        if (along) strip.position.z = sign * (item.wid / 2 - 0.17);
+        else {
+          strip.rotation.y = Math.PI / 2;
+          strip.position.x = sign * (item.len / 2 - 0.17);
+        }
+        group.add(strip);
+      }
       break;
+    }
+
+    case 'wedge': {
+      const points = [[-item.len / 2, 0]];
+      const steps = item.curve && item.curve !== 1 ? 24 : 1;
+      for (let i = 0; i <= steps; i += 1) {
+        const u = -item.len / 2 + (i / steps) * item.len;
+        points.push([u, wedgeProfile(item, u)]);
+      }
+      points.push([item.len / 2, 0]);
+      group.add(extrudeProfile(points, item.wid, surface));
+      break;
+    }
 
     case 'quarter': {
-      group.add(extrudeProfile(quarterProfile(feature), RAMP_WIDTH, materials.ramp));
-      // Steel coping along the lip, sitting flush with it: centred on the lip
-      // it stood a third of its own height proud of the surface the wheels
-      // leave from, so boards went through it.
+      const run = quarterRun(item);
+      const points = [[0, 0]];
+      for (let i = 1; i <= 40; i += 1) {
+        const u = (i / 40) * run;
+        points.push([u, quarterProfile(item, u)]);
+      }
+      points.push([run + item.deck, item.height], [run + item.deck, 0]);
+      group.add(extrudeProfile(points, item.wid, materials.ramp));
+
+      // Steel coping along the lip, sunk so its top is flush with the deck:
+      // centred on the lip it would stand proud of where the wheels ride.
       const radius = 0.34;
       const coping = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius, radius, RAMP_WIDTH, 14),
+        new THREE.CylinderGeometry(radius, radius, item.wid, 14),
         materials.metal,
       );
       coping.rotation.x = Math.PI / 2;
-      coping.position.set(feature.length, feature.height - radius + 0.04, 0);
+      coping.position.set(run - radius * 0.4, item.height - radius + 0.02, 0);
       coping.castShadow = true;
       group.add(coping);
       break;
     }
 
-    case 'funbox':
-      group.add(extrudeProfile(funboxProfile(feature), RAMP_WIDTH, materials.ramp));
-      break;
-
-    case 'ledge': {
-      const block = new THREE.Mesh(
-        new THREE.BoxGeometry(feature.length, feature.height, RAMP_WIDTH),
-        materials.concrete,
-      );
-      block.position.set(feature.length / 2, feature.height / 2, 0);
-      block.castShadow = true;
-      block.receiveShadow = true;
-      group.add(block);
-
-      // Steel edging along the grindable top corner.
-      for (const side of [-1, 1]) {
-        const edge = new THREE.Mesh(
-          new THREE.BoxGeometry(feature.length, 0.5, 0.5),
-          materials.metal,
-        );
-        edge.position.set(feature.length / 2, feature.height - 0.16, side * (RAMP_WIDTH / 2 - 0.16));
-        edge.castShadow = true;
-        group.add(edge);
+    case 'stairs': {
+      const points = [[0, 0]];
+      for (let step = 0; step < item.drops - 1; step += 1) {
+        const h = stairsProfile(item, step * item.tread);
+        points.push([step * item.tread, h], [(step + 1) * item.tread, h]);
       }
-      break;
-    }
-
-    case 'rail': {
-      // The feature's height is the *top* of the bar — the surface you grind —
-      // so the bar sits one radius below it. Centred on it, grinds sank into
-      // the bar by its radius.
-      const barY = feature.height - RAIL_RADIUS;
-      const bar = new THREE.Mesh(
-        new THREE.CylinderGeometry(RAIL_RADIUS, RAIL_RADIUS, feature.length, 18),
-        materials.metal,
-      );
-      bar.rotation.z = Math.PI / 2;
-      bar.position.set(feature.length / 2, barY, 0);
-      bar.castShadow = true;
-      group.add(bar);
-
-      // A post at each end, straight under the bar, where the board meets it.
-      // (They used to sit a tenth of the way in, splayed out to the board's
-      // edges, which is exactly where a board rolling underneath went through.)
-      const inset = 0.45;
-      for (const x of [inset, feature.length - inset]) {
-        const post = new THREE.Mesh(
-          new THREE.BoxGeometry(0.5, barY, 0.5),
-          materials.metal,
-        );
-        post.position.set(x, barY / 2, 0);
-        post.castShadow = true;
-        group.add(post);
-
-        const foot = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.24, 3.2), materials.metal);
-        foot.position.set(x, 0.12, 0);
-        foot.castShadow = true;
-        foot.receiveShadow = true;
-        group.add(foot);
-      }
+      points.push([(item.drops - 1) * item.tread, 0]);
+      group.add(extrudeProfile(points, item.wid, surface));
       break;
     }
 
@@ -286,52 +291,160 @@ export function createFeatureMesh(feature, materials) {
       break;
   }
 
+  group.position.set(item.x, 0, item.z);
+  group.rotation.y = -(item.rot ?? 0);
   return group;
 }
 
-/* ------------------------------------------------------------ the table */
+/**
+ * A round bar from a to b ([x, z, topY] each), on posts. The given heights are
+ * the *top* of the bar — the surface you grind — so the bar's centre is one
+ * radius below. Posts and feet stay inside the bar's footprint, where the
+ * physics already has the rail as solid.
+ */
+function buildRail(rail, materials) {
+  const group = new THREE.Group();
+  const a = new THREE.Vector3(rail.a[0], rail.a[2] - RAIL_RADIUS, rail.a[1]);
+  const b = new THREE.Vector3(rail.b[0], rail.b[2] - RAIL_RADIUS, rail.b[1]);
+  const length = a.distanceTo(b);
 
-/** How much table one tile of the wood texture covers, in world units. */
-const TABLE_TILE = 44;
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(RAIL_RADIUS, RAIL_RADIUS, length, 18), materials.metal);
+  bar.position.copy(a).add(b).multiplyScalar(0.5);
+  bar.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  bar.castShadow = true;
+  group.add(bar);
+
+  const posts = Math.max(2, Math.round(length / 14) + 1);
+  for (let i = 0; i < posts; i += 1) {
+    const t = 0.03 + (0.94 * i) / (posts - 1);
+    const top = a.clone().lerp(b, t);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, top.y, 10), materials.metal);
+    post.position.set(top.x, top.y / 2, top.z);
+    post.castShadow = true;
+    group.add(post);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.16, 14), materials.metal);
+    foot.position.set(top.x, 0.08, top.z);
+    foot.receiveShadow = true;
+    group.add(foot);
+  }
+  return group;
+}
+
+/** Every obstacle in the park, built once. */
+export function buildPark(park, materials) {
+  const group = new THREE.Group();
+  for (const item of park.items) {
+    group.add(item.kind === 'rail' ? buildRail(item, materials) : buildItem(item, materials));
+  }
+  return group;
+}
+
+/* ------------------------------------------------------ base and desk */
 
 /**
- * One segment of tabletop, sized to a feature so a gap is simply a segment
- * that was never built. The top face's UVs are rewritten from the segment's
- * world position, so the grain runs unbroken from one segment to the next
- * instead of restarting at every seam.
+ * The park's base board and the desk under it. The base board is the top of
+ * the physics' world (y = 0); the desk is a step down all round it.
  */
-export function createTableSegment(length, worldX, material, edgeMaterial) {
+export function buildGround(materials, deskTexture) {
+  // (deskTexture is materials.desk.map; its tiling is set here with the desk.)
   const group = new THREE.Group();
 
-  const geometry = new THREE.BoxGeometry(length, TABLE_THICKNESS, TABLE_DEPTH);
-  const uv = geometry.attributes.uv;
-  // BoxGeometry lays faces out +x, -x, +y, -y, +z, -z with four vertices each,
-  // so the top face is vertices 8..11.
-  for (let i = 8; i < 12; i += 1) {
-    uv.setXY(
-      i,
-      (worldX + uv.getX(i) * length) / TABLE_TILE,
-      (uv.getY(i) * TABLE_DEPTH) / TABLE_TILE,
-    );
+  const baseThickness = -DESK.y;
+  const base = box(TABLE.halfX * 2, baseThickness, TABLE.halfZ * 2, materials.base);
+  base.position.y = -baseThickness / 2;
+  group.add(base);
+
+  const deskThickness = 4;
+  const deskGeometry = worldUV(new THREE.BoxGeometry(DESK.halfX * 2, deskThickness, DESK.halfZ * 2));
+  const desk = new THREE.Mesh(deskGeometry, [
+    materials.deskEdge, materials.deskEdge, materials.desk,
+    materials.deskEdge, materials.deskEdge, materials.deskEdge,
+  ]);
+  desk.position.y = DESK.y - deskThickness / 2;
+  desk.receiveShadow = true;
+  deskTexture.repeat.set(1 / 110, 1 / 110);
+  group.add(desk);
+
+  // Legs down to the floor, and the floor, for anyone who rides off the edge.
+  const legHeight = DESK.y - deskThickness - FLOOR_Y;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const leg = box(6, legHeight, 6, materials.deskEdge);
+    leg.position.set(sx * (DESK.halfX - 8), FLOOR_Y + legHeight / 2, sz * (DESK.halfZ - 8));
+    group.add(leg);
   }
-  uv.needsUpdate = true;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), materials.floor);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = FLOOR_Y;
+  floor.receiveShadow = true;
+  group.add(floor);
 
-  const top = new THREE.Mesh(
-    geometry,
-    [edgeMaterial, edgeMaterial, material, edgeMaterial, edgeMaterial, edgeMaterial],
-  );
-  top.position.set(length / 2, -TABLE_THICKNESS / 2, 0);
-  top.receiveShadow = true;
-  group.add(top);
+  return group;
+}
 
-  // A chamfered lip along both long edges, so the table reads as a real slab.
-  for (const side of [-1, 1]) {
-    const lip = new THREE.Mesh(new THREE.BoxGeometry(length, 0.55, 0.9), edgeMaterial);
-    lip.position.set(length / 2, -0.2, side * (TABLE_DEPTH / 2 - 0.3));
-    lip.receiveShadow = true;
-    group.add(lip);
+/** Painted board for the park base: dark, even, with faint panel seams. */
+export function createBaseTexture() {
+  return canvasTexture(1024, 1024, (ctx, w, h) => {
+    ctx.fillStyle = '#4d5560';
+    ctx.fillRect(0, 0, w, h);
+    const random = rng(71);
+    for (let i = 0; i < 14000; i += 1) {
+      const v = random();
+      ctx.fillStyle = v > 0.5 ? rgba('#ffffff', 0.05 * v) : rgba('#1c2027', 0.1 * v);
+      ctx.fillRect(random() * w, random() * h, 1 + random() * 2, 1 + random() * 2);
+    }
+    // Wheel scuffs.
+    for (let i = 0; i < 40; i += 1) {
+      ctx.strokeStyle = rgba('#20242b', 0.08 + random() * 0.08);
+      ctx.lineWidth = 2 + random() * 3;
+      ctx.beginPath();
+      const x = random() * w;
+      const y = random() * h;
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + (random() - 0.5) * 300, y + (random() - 0.5) * 300, x + (random() - 0.5) * 500, y + (random() - 0.5) * 500);
+      ctx.stroke();
+    }
+    // Panel seams: one tile of texture is one 400mm panel.
+    ctx.fillStyle = rgba('#15181d', 0.55);
+    ctx.fillRect(0, 0, w, 3);
+    ctx.fillRect(0, 0, 3, h);
+  }, { repeat: [1 / 40, 1 / 40] });
+}
+
+/** Floorboards far below, mostly seen when you ride off the desk. */
+export function createFloorTexture() {
+  return canvasTexture(512, 512, (ctx, w, h) => {
+    ctx.fillStyle = '#5a3f28';
+    ctx.fillRect(0, 0, w, h);
+    const random = rng(12);
+    for (let i = 0; i < 8; i += 1) {
+      ctx.fillStyle = shade('#5a3f28', (random() - 0.5) * 0.12);
+      ctx.fillRect(0, (i / 8) * h, w, h / 8 - 3);
+    }
+  }, { repeat: [14, 14] });
+}
+
+/** Clutter on the desk round the park: real sizes, so the board reads as 96mm. */
+export const DESK_LAYOUT = [
+  { prop: 'mug', x: 142, z: -28, rot: 0.6 },
+  { prop: 'can', x: -140, z: 36, rot: 0 },
+  { prop: 'pencil', x: 60, z: 96, rot: 0.2 },
+  { prop: 'pencil', x: 72, z: 100, rot: -0.1 },
+  { prop: 'phone', x: -70, z: -102, rot: 0.15 },
+  { prop: 'notepad', x: 150, z: 70, rot: 0.3 },
+  { prop: 'coins', x: -150, z: -70, rot: 0 },
+  { prop: 'eraser', x: 20, z: -100, rot: 0.8 },
+  { prop: 'mug', x: -120, z: 102, rot: 2.1 },
+  { prop: 'can', x: 128, z: 104, rot: 0 },
+];
+
+export function buildDeskClutter(materials) {
+  const group = new THREE.Group();
+  for (const { prop, x, z, rot } of DESK_LAYOUT) {
+    const item = DESK_PROPS[prop](materials);
+    item.position.set(x, DESK.y, z);
+    item.rotation.y = rot;
+    group.add(item);
   }
-
   return group;
 }
 

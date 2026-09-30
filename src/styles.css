@@ -686,7 +686,7 @@ input[type='range']::-moz-range-thumb {
 
 .hud__combo {
   position: absolute;
-  top: calc(78px + var(--safe-t));
+  top: calc(112px + var(--safe-t));
   left: calc(16px + var(--safe-l));
   font-size: 13px;
   font-weight: 600;
@@ -767,6 +767,159 @@ input[type='range']::-moz-range-thumb {
   background: var(--accent);
   transform-origin: left center;
   transform: scaleX(0);
+}
+
+.hud__buttons {
+  display: flex;
+  gap: 6px;
+}
+
+/* S-K-A-T-E: dim until collected, then lit in comic yellow. */
+.hud__letters {
+  display: flex;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.hud__letter {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.34);
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.hud__letter[data-got='true'] {
+  color: #1b1200;
+  background: #ffd93d;
+  border-color: #1b1200;
+  transform: scale(1.08);
+}
+
+/* --------------------------------------------------------- touch controls */
+
+.touch {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 4;
+  display: none;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 calc(18px + var(--safe-r)) calc(18px + var(--safe-b)) calc(18px + var(--safe-l));
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.touch[data-show='true'] {
+  display: flex;
+}
+
+.touch__stick {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.12));
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.touch__knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  transition: transform 0.08s linear;
+}
+
+.touch__stick[data-active='true'] .touch__knob {
+  transition: none;
+}
+
+.touch__buttons {
+  position: relative;
+  width: 220px;
+  height: 180px;
+  pointer-events: none;
+}
+
+.touch__ollie,
+.touch__trick {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-weight: 800;
+  line-height: 1.05;
+  white-space: pre-line;
+  text-align: center;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45), 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.06s linear, box-shadow 0.06s linear;
+}
+
+.touch__ollie {
+  right: 0;
+  bottom: 0;
+  width: 96px;
+  height: 96px;
+  font-size: 17px;
+  color: #1b1200;
+  background: var(--accent);
+  border: 3px solid #1b1200;
+}
+
+.touch__trick {
+  width: 58px;
+  height: 58px;
+  font-size: 11px;
+  color: #fff;
+  background: rgba(20, 24, 32, 0.72);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Fanned round the ollie button, within reach of a right thumb. */
+.touch__trick--a { right: 106px; bottom: 4px; }
+.touch__trick--b { right: 100px; bottom: 70px; }
+.touch__trick--c { right: 40px; bottom: 108px; }
+.touch__trick--d { right: 160px; bottom: 118px; }
+
+.touch__ollie[data-active='true'],
+.touch__trick[data-active='true'] {
+  transform: translateY(3px) scale(0.96);
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0.45), 0 3px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Short landscape phones: shrink the controls so they leave the park visible. */
+@media (max-height: 460px) {
+  .touch__stick { width: 112px; height: 112px; }
+  .touch__buttons { transform: scale(0.84); transform-origin: right bottom; }
 }
 
 .hud__overlay {
