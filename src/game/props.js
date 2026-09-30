@@ -157,10 +157,12 @@ export function createKitMaterials() {
   };
   const standard = (options) => new THREE.MeshStandardMaterial({ roughness: 0.6, ...options });
   const materials = {
-    plywood: standard({ map: textures.plywood, roughness: 0.62 }),
-    plySide: standard({ map: textures.plywood, color: '#c9a77a', roughness: 0.7 }),
-    concrete: standard({ map: textures.concrete, roughness: 0.88 }),
-    painted: standard({ map: textures.painted, roughness: 0.55 }),
+    // Grain, pits and scuffs are raised from the colour maps themselves as
+    // bump: the surfaces catch the low sun without a second texture.
+    plywood: standard({ map: textures.plywood, bumpMap: textures.plywood, bumpScale: 0.5, roughness: 0.58 }),
+    plySide: standard({ map: textures.plywood, bumpMap: textures.plywood, bumpScale: 0.5, color: '#c9a77a', roughness: 0.66 }),
+    concrete: standard({ map: textures.concrete, bumpMap: textures.concrete, bumpScale: 1.2, roughness: 0.86 }),
+    painted: standard({ map: textures.painted, bumpMap: textures.painted, bumpScale: 0.6, roughness: 0.45 }),
     steel: standard({ color: '#c3c9d2', roughness: 0.25, metalness: 0.95 }),
     screw: standard({ color: '#6f747c', roughness: 0.4, metalness: 0.9 }),
     railBlack: standard({ color: '#1f2226', roughness: 0.42, metalness: 0.5 }),
@@ -179,8 +181,8 @@ export function createKitMaterials() {
     }),
     phone: standard({ color: '#16181c', roughness: 0.3, metalness: 0.4 }),
     lens: standard({ color: '#0a0b0d', roughness: 0.05, metalness: 0.6 }),
-    ceramic: standard({ color: '#f1efe9', roughness: 0.25 }),
-    ceramicBlue: standard({ color: '#3f6fb0', roughness: 0.3 }),
+    ceramic: standard({ color: '#f1efe9', roughness: 0.12 }),
+    ceramicBlue: standard({ color: '#3f6fb0', roughness: 0.14 }),
     coffee: standard({ color: '#2a1509', roughness: 0.15 }),
     potMetal: standard({ color: '#3c3f45', roughness: 0.45, metalness: 0.6 }),
     pencil: standard({ color: '#e6b422', roughness: 0.45 }),

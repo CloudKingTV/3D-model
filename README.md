@@ -108,8 +108,24 @@ screwdriver — lie in the corners.
 Round it is a bedroom: an oak table on legs, a rug, floorboards, a window
 onto rooftops and sky with curtains and a plant on the sill, a radiator, a
 bookshelf, a bed, posters, a door, a desk chair and a real skateboard leaning
-on the wall. Daylight comes in through the window and the lamp warms its
-corner of the table.
+on the wall.
+
+The light is a low afternoon sun through that window (`lighting.js`). Its
+shadow map covers the whole room but is drawn once, at load — the walls,
+window and obstacles never move — so the window throws a real patch of
+sunlight across the table with the glazing bars' shadows in it, obstacles
+shade each other and the table, and the far corners fall into shade, for no
+cost per frame. The board's own shadow is projected along the sunlight onto
+whatever is below it, crisp in the sun and a faint smudge in the shade, and
+the board darkens when you ride out of the light. The room is photographed
+once from over the table and used as the environment, so the coping, rails,
+trucks, laptop, mug and the satin-lacquered table reflect this window and
+these walls, and the ambient light carries the room's own colours. Wood grain,
+ply and concrete are raised as bump from their own colour maps. Dust drifts in
+the sunlight, the window glows (on desktop, where the frame is HDR), and a
+neutral tone curve keeps colours true while rolling off the highlights. Phones
+get the same sun, shadows and reflections on the obstacles, with a cheaper
+room and no glow.
 
 Scale is the point. The deck is 96mm, the quarter pipes are 90mm tall, the
 table is 2.6m x 1.7m and 750mm off the floor, the mug is 95mm — real sizes,
@@ -192,7 +208,9 @@ src/game/rider.js    3D board physics, tricks, grinds and scoring (pure)
 src/game/props.js    the obstacle kit and table objects, built from park.js
 src/game/room.js     the bedroom and the table
 src/game/batch.js    merges static meshes into one per material
-src/game/bakedShadows.js  obstacle shadows on the table, baked at load
+src/game/lighting.js the sun, its one-off shadow map, the board's shadow,
+                     dust in the sunlight, the captured environment
+src/game/bakedShadows.js  contact darkening on the table, baked at load
 src/game/canvasKit.js     canvas textures and small mesh helpers
 src/game/scene.js    game scene, lighting, board pose, third-person camera
 src/game/tiltshift.js the miniature-faking blur

@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createFingerboard } from '../lib/fingerboard.js';
 import { createTiltShift } from './tiltshift.js';
 import { createEffects } from './effects.js';
@@ -7,13 +6,14 @@ import { createKitMaterials, buildPark, buildTableClutter } from './props.js';
 import { createRoomMaterials, buildRoom, buildTable } from './room.js';
 import { mergeStatic } from './batch.js';
 import { bakeTableShadows } from './bakedShadows.js';
+import {
+  createSun,
+  createBoardShadow,
+  createSunbeams,
+  captureEnvironment,
+  SUN_DIRECTION,
+} from './lighting.js';
 
-/**
- * Where the daylight comes from, relative to what it lights: through the
- * window behind the far side of the table, high and a little to the left.
- * The baked table shadows and the board's live shadow both use it.
- */
-const SUN_OFFSET = new THREE.Vector3(-30, 85, -100);
 
 /** A collectible letter: the glyph drawn on a canvas, in a spinning ring. */
 function createLetter(letter, ringMaterial) {
@@ -51,12 +51,12 @@ function shortestAngle(from, to) {
  * tilt-shift blur, and last the shadow itself.
  */
 const QUALITY_LEVELS = [
-  { ratio: 2, shadow: 2048, blur: true, shadows: true },
-  { ratio: 1.5, shadow: 1024, blur: true, shadows: true },
-  { ratio: 1.25, shadow: 1024, blur: true, shadows: true },
-  { ratio: 1, shadow: 512, blur: true, shadows: true },
-  { ratio: 0.85, shadow: 512, blur: false, shadows: true, lamp: false },
-  { ratio: 0.7, shadow: 512, blur: false, shadows: false, lamp: false },
+  { ratio: 2, shadow: 4096, blur: true, shadows: true, bloom: true, beams: true },
+  { ratio: 1.5, shadow: 4096, blur: true, shadows: true, bloom: true, beams: true },
+  { ratio: 1.25, shadow: 2048, blur: true, shadows: true, bloom: false, beams: true },
+  { ratio: 1, shadow: 2048, blur: true, shadows: true, bloom: false, beams: false },
+  { ratio: 0.85, shadow: 1024, blur: false, shadows: true, bloom: false, beams: false, lamp: false },
+  { ratio: 0.7, shadow: 1024, blur: false, shadows: false, bloom: false, beams: false, lamp: false },
 ];
 
 export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', park }) {
@@ -68,8 +68,10 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   });
   let level = phone ? 2 : 0;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY_LEVELS[level].ratio));
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  // Khronos' neutral curve: highlights roll off gently, so the window stays
+  // bright without the sunlit table burning out, and colours stay true.
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   // Counted per frame across every pass (shadow, scene, blur), not per pass.
@@ -84,40 +86,24 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
 
   const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 2000);
 
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environment = environment;
-  scene.environmentIntensity = 0.35;
-
   /* ------------------------------------------------------------- lights */
 
-  // Daylight through the window. It is the only light that casts a live
-  // shadow, and the only thing that casts into it is the board: the
-  // obstacles' shadows are baked into the table (below), so the shadow map
-  // stays a few hundred triangles however much is on the table.
-  const key = new THREE.DirectionalLight('#fff0d8', 2.8);
-  key.castShadow = true;
-  const shadowSize = QUALITY_LEVELS[level].shadow;
-  key.shadow.mapSize.set(shadowSize, shadowSize);
-  key.shadow.camera.near = 60;
-  key.shadow.camera.far = 220;
-  const shadowSpan = 16;
-  key.shadow.camera.left = -shadowSpan;
-  key.shadow.camera.right = shadowSpan;
-  key.shadow.camera.top = shadowSpan;
-  key.shadow.camera.bottom = -shadowSpan;
-  key.shadow.bias = -0.0006;
-  key.shadow.normalBias = 0.02;
-  scene.add(key);
-  scene.add(key.target);
-
-  // Sky light from the window and bounce off the floor.
-  scene.add(new THREE.HemisphereLight('#dbe8ff', '#6b4e33', 0.75));
+  // Low afternoon sun through the window. Its shadow map covers the room
+  // and is drawn once: see lighting.js.
+  const sun = createSun({ mapSize: QUALITY_LEVELS[level].shadow });
+  scene.add(sun, sun.target);
+  // Soft fill. Most of the ambient light comes from the captured room
+  // (below); this keeps the shade from going dead where that falls short.
+  // Cool, like the blue sky it stands for, to balance the warm sun.
+  // Phones shade the room with Lambert, which ignores the captured room
+  // light, so their fill has to do that job too.
+  const sky = new THREE.HemisphereLight('#b9cdf5', '#5e4a38', phone ? 1.25 : 0.4);
+  scene.add(sky);
 
   /* -------------------------------------------------------------- world */
 
   const kit = createKitMaterials();
-  const room = createRoomMaterials();
+  const room = createRoomMaterials({ lite: phone });
   const ring = new THREE.MeshStandardMaterial({
     color: '#ffcf3d', emissive: '#ff9d00', emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.6,
   });
@@ -127,12 +113,17 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   const built = buildPark(park, kit.materials);
   const parkGroup = new THREE.Group();
   parkGroup.add(built.group, buildTableClutter(kit.materials), buildTable(room.materials));
-  scene.add(mergeStatic(parkGroup, { receiveShadow: true, name: 'park' }));
-  scene.add(mergeStatic(buildRoom(room.materials), { receiveShadow: false, name: 'room' }));
+  scene.add(mergeStatic(parkGroup, { receiveShadow: true, castShadow: true, name: 'park' }));
+  scene.add(mergeStatic(buildRoom(room.materials), { receiveShadow: true, castShadow: true, name: 'room' }));
 
-  const sunDirection = SUN_OFFSET.clone().negate().normalize();
-  const baked = bakeTableShadows(park, sunDirection);
+  // Contact darkening where things meet the table; the sun's own shadows
+  // come from its shadow map.
+  const baked = bakeTableShadows(park, SUN_DIRECTION, { castShadows: false });
   scene.add(baked.mesh);
+
+  const beams = createSunbeams();
+  beams.group.visible = QUALITY_LEVELS[level].beams;
+  scene.add(beams.group);
 
   // The desk lamp is on: a warm pool of light over its corner of the table.
   const lamp = new THREE.PointLight('#ffc98a', 1600, 0, 2);
@@ -181,7 +172,9 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     board.object.removeFromParent();
     const position = board.object.position.clone();
     board.object.position.set(0, 0, 0);
-    boardProxy = mergeStatic(board.object, { castShadow: true, disposeSource: false, name: 'board' });
+    // It receives the sun's shadow (ride into the shade and it goes dark)
+    // but does not cast into the static map; its shadow is projected below.
+    boardProxy = mergeStatic(board.object, { receiveShadow: true, disposeSource: false, name: 'board' });
     board.object.position.copy(position);
     boardProxy.add(noseMarker);
     flipGroup.add(boardProxy);
@@ -189,6 +182,18 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   rebuildBoardProxy();
 
   const effects = createEffects(scene, { accent });
+
+  const boardShadow = createBoardShadow(park, { length: board.spec.length, width: board.spec.width });
+  scene.add(boardShadow.mesh);
+
+  // Now that the room is built, photograph it for reflections and ambient
+  // light — without the board, letters or effects in the picture.
+  const environmentTarget = captureEnvironment(renderer, scene, [root, boardShadow.mesh, beams.group, ...letters.map((l) => l.group)]);
+  scene.environment = environmentTarget.texture;
+  scene.environmentIntensity = 1.5;
+  // Walls lit by the room's own light; the lamp tinted in on top.
+  const onContextRestored = () => { sun.shadow.needsUpdate = true; };
+  canvas.addEventListener('webglcontextrestored', onContextRestored);
 
   /* -------------------------------------------------------------- pose */
 
@@ -255,7 +260,14 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
       noseMarker.getWorldPosition(trailPoint);
       effects.pushTrail(trailPoint);
     }
+
+    boardShadow.update(
+      rider.x, rider.y, rider.z, facing,
+      rider.state === 'bail' ? rider.bailRoll : rider.flip,
+      lastDelta, rider.state === 'air',
+    );
   }
+  let lastDelta = 1 / 60;
 
   /* ------------------------------------------------------------ camera */
 
@@ -335,12 +347,6 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     if (snap) smoothedLook.copy(lookTarget);
     else smoothedLook.lerp(lookTarget, 1 - Math.exp(-dt * 10));
     camera.lookAt(smoothedLook);
-
-    // The sun's shadow box rides along with the board.
-    const ground = Math.max(rider.y, 0);
-    key.position.set(rider.x + SUN_OFFSET.x, ground + SUN_OFFSET.y, rider.z + SUN_OFFSET.z);
-    key.target.position.set(rider.x, ground, rider.z);
-    key.target.updateMatrixWorld();
   }
 
   /* ----------------------------------------------------------- letters */
@@ -358,7 +364,8 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
   /* ------------------------------------------------------ post & resize */
 
   // Always on: the miniature illusion is the point, not a nicety.
-  const post = createTiltShift(renderer, scene, camera, { lowPrecision: phone });
+  const post = createTiltShift(renderer, scene, camera, { lowPrecision: phone, bloom: !phone });
+  post.setBloom(QUALITY_LEVELS[level].bloom);
   // A deeper sharp band than the side view had: the chase camera looks down
   // the park, and the rider needs to read what is coming.
   post.setRange(0.2);
@@ -383,12 +390,15 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     level += 1;
     const next = QUALITY_LEVELS[level];
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, next.ratio));
-    if (next.shadow !== key.shadow.mapSize.x) {
-      key.shadow.mapSize.set(next.shadow, next.shadow);
-      key.shadow.map?.dispose();
-      key.shadow.map = null;
+    if (next.shadow !== sun.shadow.mapSize.x) {
+      sun.shadow.mapSize.set(next.shadow, next.shadow);
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;
+      sun.shadow.needsUpdate = true;
     }
-    key.castShadow = next.shadows;
+    sun.castShadow = next.shadows;
+    beams.group.visible = next.beams;
+    post.setBloom(next.bloom);
     // The lamp is a second per-pixel light on every lit surface: the
     // cheapest budgets go without it.
     lamp.visible = next.lamp !== false;
@@ -438,8 +448,11 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     for (const material of materials) material.dispose();
     const textures = [...Object.values(kit.textures), ...Object.values(room.textures).flat(), baked.texture];
     for (const texture of textures) texture.dispose();
-    environment.dispose();
-    pmrem.dispose();
+    canvas.removeEventListener('webglcontextrestored', onContextRestored);
+    boardShadow.dispose();
+    beams.dispose();
+    environmentTarget.dispose();
+    sun.shadow.map?.dispose();
     post.dispose();
     renderer.dispose();
     // Give the GL context back now rather than whenever it is collected:
@@ -488,7 +501,9 @@ export function createGameScene(canvas, { quality = 'high', accent = '#ff5722', 
     },
 
     stepEffects(dt) {
+      lastDelta = dt;
       effects.update(dt);
+      if (beams.group.visible) beams.update(dt, size.height * renderer.getPixelRatio());
     },
   };
 }

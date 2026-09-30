@@ -282,7 +282,12 @@ function createDuvetTexture() {
 
 /* --------------------------------------------------------------- build */
 
-export function createRoomMaterials() {
+/**
+ * `lite` (phones) shades the room with Lambert, which is cheap but ignores
+ * the captured environment light; otherwise the room is physically based
+ * like everything else, so its walls pick up the window's bounce light.
+ */
+export function createRoomMaterials({ lite = false } = {}) {
   const textures = {
     table: createTableTexture(),
     wall: createWallTexture(),
@@ -293,18 +298,39 @@ export function createRoomMaterials() {
     duvet: createDuvetTexture(),
     posters: [0, 1, 2].map(createPosterTexture),
   };
-  const lambert = (options) => new THREE.MeshLambertMaterial(options);
+  const lambert = lite
+    ? (options) => new THREE.MeshLambertMaterial(options)
+    : (options) => new THREE.MeshStandardMaterial({ roughness: 0.9, ...options });
   const materials = {
-    // The table is looked at from a centimetre away: it gets the full PBR.
-    table: new THREE.MeshStandardMaterial({ map: textures.table, roughness: 0.55, metalness: 0.02 }),
+    // The table is looked at from a centimetre away: varnished oak, the
+    // grain raised through the finish, the window reflected in the lacquer.
+    table: lite
+      ? new THREE.MeshStandardMaterial({
+        map: textures.table, bumpMap: textures.table, bumpScale: 0.6, roughness: 0.5,
+      })
+      : new THREE.MeshPhysicalMaterial({
+        map: textures.table,
+        bumpMap: textures.table,
+        bumpScale: 0.8,
+        roughness: 0.58,
+        // A satin lacquer rather than a mirror: into the sun it glares
+        // softly instead of whiting out the view.
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.32,
+      }),
     tableEdge: new THREE.MeshStandardMaterial({ color: '#6e4526', roughness: 0.5 }),
     wall: lambert({ map: textures.wall }),
     skirting: lambert({ color: '#f4f1ea' }),
-    floor: lambert({ map: textures.floor }),
+    // Varnished boards: glossier than the walls, so the window shows in them.
+    floor: lite
+      ? new THREE.MeshLambertMaterial({ map: textures.floor })
+      : new THREE.MeshStandardMaterial({ map: textures.floor, roughness: 0.45 }),
     rug: lambert({ map: textures.rug }),
     ceiling: lambert({ color: '#f3efe8' }),
     windowFrame: lambert({ color: '#f7f6f2' }),
-    sky: new THREE.MeshBasicMaterial({ map: textures.sky }),
+    // Brighter than white: daylight outside is far brighter than the room,
+    // and on desktop the glow pass haloes the window because of it.
+    sky: new THREE.MeshBasicMaterial({ map: textures.sky, color: new THREE.Color(1.7, 1.7, 1.7) }),
     curtain: lambert({ color: '#7d93a8' }),
     radiator: lambert({ color: '#eceae4' }),
     shelf: lambert({ color: '#caa57a' }),

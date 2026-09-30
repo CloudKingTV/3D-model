@@ -12,7 +12,7 @@ import { TABLE } from './park.js';
  *
  * `sun` is the direction light travels *toward* the table (unit vector).
  */
-export function bakeTableShadows(park, sun, { resolution = 1 } = {}) {
+export function bakeTableShadows(park, sun, { resolution = 1, castShadows = true } = {}) {
   const width = Math.round(TABLE.halfX * 2 * resolution);
   const depth = Math.round(TABLE.halfZ * 2 * resolution);
   const cell = 1 / resolution;
@@ -43,7 +43,7 @@ export function bakeTableShadows(park, sun, { resolution = 1 } = {}) {
     for (let i = 0; i < width; i += 1) {
       if (heights[j * width + i] > 0.05) continue; // under an obstacle: hidden anyway
       let dark = 0;
-      for (let k = 1; k <= reach; k += 1) {
+      for (let k = 1; castShadows && k <= reach; k += 1) {
         const h = heightAtCell(Math.round(i + stepX * k), Math.round(j + stepZ * k));
         if (h > k * cell * rise) {
           // Fade the far end of long shadows, like a real penumbra.
@@ -57,7 +57,7 @@ export function bakeTableShadows(park, sun, { resolution = 1 } = {}) {
         const h = heightAtCell(i + di, j + dj);
         if (h > 0.3) occluded += Math.min(1, h / 3) / (Math.abs(di) + Math.abs(dj));
       }
-      shade[j * width + i] = Math.min(1, dark * 0.75 + occluded * 0.12);
+      shade[j * width + i] = Math.min(1, dark * 0.75 + occluded * (castShadows ? 0.12 : 0.2));
     }
   }
 

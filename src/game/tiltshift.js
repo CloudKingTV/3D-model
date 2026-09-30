@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 /**
  * Tilt-shift: the miniature-faking trick from photography.
@@ -26,6 +27,7 @@ const TiltShiftShader = {
     uFeather: { value: 0.3 },
     uStrength: { value: 5.0 }, // blur radius in pixels at full falloff
     uSaturation: { value: 1.0 },
+    uVignette: { value: 0.0 }, // darkening toward the corners, like a lens
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -43,6 +45,7 @@ const TiltShiftShader = {
     uniform float uFeather;
     uniform float uStrength;
     uniform float uSaturation;
+    uniform float uVignette;
     varying vec2 vUv;
 
     void main() {
@@ -62,6 +65,10 @@ const TiltShiftShader = {
         color += texture2D(tDiffuse, vUv - offset * 3.2307692308) * 0.0702702703;
       }
 
+      if (uVignette > 0.0) {
+        vec2 d = vUv - 0.5;
+        color.rgb *= 1.0 - uVignette * smoothstep(0.35, 0.85, length(d * vec2(1.1, 1.0)) * 1.25);
+      }
       if (uSaturation != 1.0) {
         float grey = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
         color.rgb = mix(vec3(grey), color.rgb, uSaturation);
@@ -71,7 +78,7 @@ const TiltShiftShader = {
   `,
 };
 
-export function createTiltShift(renderer, scene, camera, { lowPrecision = false } = {}) {
+export function createTiltShift(renderer, scene, camera, { lowPrecision = false, bloom = false } = {}) {
   // Half-float targets are the default and cost phones dearly for a blur that
   // 8 bits per channel does just as well.
   const composer = lowPrecision
@@ -79,10 +86,16 @@ export function createTiltShift(renderer, scene, camera, { lowPrecision = false 
     : new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
 
+  // A soft glow on what is really bright — the window, the lamp's bulb, sun
+  // glinting off steel. Needs the HDR (half-float) targets, so desktop only.
+  const glow = bloom && !lowPrecision ? new UnrealBloomPass(new THREE.Vector2(256, 256), 0.16, 0.45, 1.25) : null;
+  if (glow) composer.addPass(glow);
+
   const horizontal = new ShaderPass(TiltShiftShader);
   const vertical = new ShaderPass(TiltShiftShader);
   vertical.uniforms.uDirection.value.set(0, 1);
-  vertical.uniforms.uSaturation.value = 1.12;
+  vertical.uniforms.uSaturation.value = 1.0;
+  vertical.uniforms.uVignette.value = 0.28;
   composer.addPass(horizontal);
   composer.addPass(vertical);
   composer.addPass(new OutputPass());
@@ -102,9 +115,14 @@ export function createTiltShift(renderer, scene, camera, { lowPrecision = false 
     setEnabled(on) {
       enabled = on;
     },
+    setBloom(on) {
+      if (glow) glow.enabled = on;
+    },
     setSize(width, height, pixelRatio) {
       composer.setSize(width, height);
       composer.setPixelRatio(pixelRatio);
+      // The glow is blurry by nature: half resolution is plenty.
+      glow?.setSize(Math.round((width * pixelRatio) / 2), Math.round((height * pixelRatio) / 2));
       for (const pass of passes) {
         pass.uniforms.uTexel.value.set(1 / width, 1 / height);
       }
@@ -126,6 +144,7 @@ export function createTiltShift(renderer, scene, camera, { lowPrecision = false 
       for (const pass of passes) pass.uniforms.uStrength.value = strength;
     },
     dispose() {
+      glow?.dispose();
       for (const pass of passes) pass.dispose?.();
       composer.dispose();
     },
