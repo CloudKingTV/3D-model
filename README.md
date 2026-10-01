@@ -143,7 +143,8 @@ generated on the device; nothing is downloaded.
 
 **Racing.** Five leagues, each in its own world. Everyone starts at level 15
 (`START_LEVEL` in `progression.js`), so every league is open from the first
-race; the levels below are when each would unlock from level 1:
+race, with 5,000 coins (`START_COINS`); the levels below are when each would
+unlock from level 1:
 
 | League | Level | Entry | Racers | World |
 | --- | --- | --- | --- | --- |

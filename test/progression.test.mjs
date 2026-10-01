@@ -5,7 +5,7 @@
  *   node test/progression.test.mjs
  */
 import {
-  newSave, migrate, levelInfo, xpToNext, START_LEVEL, START_XP, applyRace, claimMission, refreshDay, dailyStatus, claimDaily,
+  newSave, migrate, levelInfo, xpToNext, START_LEVEL, START_XP, START_COINS, applyRace, claimMission, refreshDay, dailyStatus, claimDaily,
   openCapsule, buyMarble, buyTrail, payEntry, LEAGUES, prizeFor, dealMissions, dailyDeal, createProfileStore, MISSION_POOL,
 } from '../src/marbles/progression.js';
 
@@ -90,7 +90,7 @@ for (let i = 0; i < 300; i += 1) {
   if (out.duplicate) dupes += 1;
 }
 check('capsules fill the collection over time', c.owned.length > 20, `${c.owned.length}/${NAMES.length}, ${dupes} duplicates`);
-check('an unaffordable capsule does nothing', openCapsule(newSave(NAMES), NAMES, Math.random, { buy: true }) === null);
+check('an unaffordable capsule does nothing', openCapsule({ ...newSave(NAMES), coins: 10 }, NAMES, Math.random, { buy: true }) === null);
 
 // Saves survive storage and old versions.
 const store = new Map();
@@ -101,7 +101,10 @@ p1.commit();
 check('progress is saved and read back', createProfileStore(NAMES, storage).save.coins === 1234);
 check('a broken save starts fresh', createProfileStore(NAMES, { getItem: () => '{nope', setItem() {} }).save.coins === newSave(NAMES).coins);
 const old = migrate({ coins: 5, owned: [99, 1], marble: 99 }, NAMES);
-check('an old save is filled in and cleaned up', old.coins === 5 && old.owned.every((i) => i < NAMES.length) && old.owned.includes(old.marble) && old.settings.sound === true);
+check('a new player starts with the bigger balance', newSave(NAMES).coins === START_COINS);
+check('an older save is topped up once, then left alone', old.coins === START_COINS
+  && migrate({ ...old, coins: 40 }, NAMES).coins === 40 && migrate({ coins: 9000 }, NAMES).coins === 9000);
+check('an old save is filled in and cleaned up', old.owned.every((i) => i < NAMES.length) && old.owned.includes(old.marble) && old.settings.sound === true);
 
 if (failures) {
   console.log(`\n${failures} failed`);

@@ -96,6 +96,8 @@ export function xpForLevel(level) {
 /** Everyone starts here: every league open from the first race. */
 export const START_LEVEL = 15;
 export const START_XP = xpForLevel(START_LEVEL);
+/** And with enough coins to enter any league several times over. */
+export const START_COINS = 5000;
 
 export function levelInfo(xp) {
   let level = 1;
@@ -199,7 +201,8 @@ export function newSave(marbleNames) {
   return {
     v: SAVE_VERSION,
     name: 'You',
-    coins: 300,
+    coins: START_COINS,
+    startCoins: true, // the starting balance has been given
     xp: START_XP,
     owned,
     marble: owned[0] ?? 0,
@@ -235,6 +238,11 @@ export function migrate(save, marbleNames) {
   if (!merged.trails.includes(merged.trail)) merged.trail = 'none';
   // Saves from before everyone started at level 15 catch up to it.
   if (!(merged.xp >= START_XP)) merged.xp = START_XP;
+  // Saves from before the bigger starting balance get topped up to it, once.
+  if (save.startCoins !== true) {
+    merged.coins = Math.max(merged.coins ?? 0, START_COINS);
+    merged.startCoins = true;
+  }
   merged.v = SAVE_VERSION;
   return merged;
 }
