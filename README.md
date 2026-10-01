@@ -141,7 +141,9 @@ screen, and playable offline once loaded (a web app manifest, icons and a small
 service worker in `public/`). Every marble, world, sound and piece of music is
 generated on the device; nothing is downloaded.
 
-**Racing.** Five leagues, each in its own world, unlocked by level:
+**Racing.** Five leagues, each in its own world. Everyone starts at level 15
+(`START_LEVEL` in `progression.js`), so every league is open from the first
+race; the levels below are when each would unlock from level 1:
 
 | League | Level | Entry | Racers | World |
 | --- | --- | --- | --- | --- |

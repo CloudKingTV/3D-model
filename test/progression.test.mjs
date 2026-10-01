@@ -5,7 +5,7 @@
  *   node test/progression.test.mjs
  */
 import {
-  newSave, migrate, levelInfo, xpToNext, applyRace, claimMission, refreshDay, dailyStatus, claimDaily,
+  newSave, migrate, levelInfo, xpToNext, START_LEVEL, START_XP, applyRace, claimMission, refreshDay, dailyStatus, claimDaily,
   openCapsule, buyMarble, buyTrail, payEntry, LEAGUES, prizeFor, dealMissions, dailyDeal, createProfileStore, MISSION_POOL,
 } from '../src/marbles/progression.js';
 
@@ -21,6 +21,9 @@ const check = (name, ok, detail = '') => {
 const day = '2026-05-10';
 const s = newSave(NAMES);
 check('a new player owns the four starters and races with one', s.owned.length === 4 && s.owned.includes(s.marble));
+check('a new player starts at level 15 with every league open', levelInfo(s.xp).level === START_LEVEL && levelInfo(s.xp).into === 0);
+check('an older, lower save catches up to level 15', levelInfo(migrate({ xp: 120 }, NAMES).xp).level === START_LEVEL
+  && migrate({ xp: START_XP + 999 }, NAMES).xp === START_XP + 999);
 check('levels follow the XP curve', levelInfo(0).level === 1 && levelInfo(xpToNext(1)).level === 2 && levelInfo(xpToNext(1) - 1).level === 1);
 
 // A win in the Rookie Cup.
@@ -30,7 +33,7 @@ const report = applyRace(s, { mode: 'league', league: 'rookie', place: 1, racers
 check('a win pays the top prize plus coins picked up', report.coins === prizeFor(LEAGUES[0], 1) + 12, `${report.coins}`);
 check('and the coins land in the save', s.coins >= before + report.coins, `${before} -> ${s.coins}`);
 check('a win counts as a win, a podium and top half', s.stats.wins === 1 && s.stats.podiums === 1 && s.stats.topHalf === 1);
-check('XP is earned', report.xp > 0 && s.xp === report.xp, `${report.xp}`);
+check('XP is earned', report.xp > 0 && s.xp === START_XP + report.xp, `${report.xp}`);
 
 // Last place still earns something; burnt counts as last.
 const r2 = applyRace(s, { mode: 'league', league: 'rookie', place: 5, racers: 12, burnt: true, counts: {} }, day);

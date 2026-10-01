@@ -86,6 +86,17 @@ export function xpToNext(level) {
   return Math.round(90 + level * 45 + level * level * 3);
 }
 
+/** Total XP it takes to reach `level` from nothing. */
+export function xpForLevel(level) {
+  let xp = 0;
+  for (let l = 1; l < level; l += 1) xp += xpToNext(l);
+  return xp;
+}
+
+/** Everyone starts here: every league open from the first race. */
+export const START_LEVEL = 15;
+export const START_XP = xpForLevel(START_LEVEL);
+
 export function levelInfo(xp) {
   let level = 1;
   let left = xp;
@@ -189,7 +200,7 @@ export function newSave(marbleNames) {
     v: SAVE_VERSION,
     name: 'You',
     coins: 300,
-    xp: 0,
+    xp: START_XP,
     owned,
     marble: owned[0] ?? 0,
     trails: ['none'],
@@ -204,7 +215,7 @@ export function newSave(marbleNames) {
     missions: { day: null, list: [] },
     settings: { sound: true, music: true, haptics: true, quality: 'auto', steering: true },
     tutorial: false,
-    seenLevel: 1,
+    seenLevel: START_LEVEL,
   };
 }
 
@@ -222,6 +233,8 @@ export function migrate(save, marbleNames) {
   if (!merged.owned.includes(merged.marble)) merged.marble = merged.owned[0];
   if (!Array.isArray(merged.trails) || !merged.trails.includes('none')) merged.trails = ['none', ...(merged.trails ?? [])];
   if (!merged.trails.includes(merged.trail)) merged.trail = 'none';
+  // Saves from before everyone started at level 15 catch up to it.
+  if (!(merged.xp >= START_XP)) merged.xp = START_XP;
   merged.v = SAVE_VERSION;
   return merged;
 }
